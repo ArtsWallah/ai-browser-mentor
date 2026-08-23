@@ -1,8 +1,8 @@
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 import numpy as np
 
 
-MODEL_NAME = "all-MiniLM-L6-v2"
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 _model = None
 
@@ -11,7 +11,9 @@ def get_model():
     global _model
 
     if _model is None:
-        _model = SentenceTransformer(MODEL_NAME)
+        _model = TextEmbedding(
+            model_name=MODEL_NAME
+        )
 
     return _model
 
@@ -19,26 +21,11 @@ def get_model():
 def embed_text(text: str) -> np.ndarray:
     model = get_model()
 
-    vector = model.encode(
-        text,
-        normalize_embeddings=True
+    embeddings = list(
+        model.embed([text])
     )
 
     return np.asarray(
-        vector,
-        dtype="float32"
-    )
-
-
-def embed_texts(texts: list[str]) -> np.ndarray:
-    model = get_model()
-
-    vectors = model.encode(
-        texts,
-        normalize_embeddings=True
-    )
-
-    return np.asarray(
-        vectors,
-        dtype="float32"
+        embeddings[0],
+        dtype=np.float32
     )
