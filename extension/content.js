@@ -1972,8 +1972,8 @@ function enableHover() {
   payload
 ) {
 
-  const url =
-    API + path;
+ const url =
+    API_BASE_URL + path;
 
   console.log(
     "AI MENTOR: POST",
