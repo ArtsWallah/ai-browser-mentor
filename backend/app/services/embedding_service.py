@@ -29,3 +29,16 @@ def embed_text(text: str) -> np.ndarray:
         embeddings[0],
         dtype=np.float32
     )
+
+
+def embed_texts(texts: list[str]) -> np.ndarray:
+    model = get_model()
+
+    embeddings = list(
+        model.embed(texts)
+    )
+
+    return np.asarray(
+        embeddings,
+        dtype=np.float32
+    )
