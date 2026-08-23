@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>AI Browser Mentor</title>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #f5f7fb;
+            --card: #ffffff;
+            --text: #111827;
+            --muted: #6b7280;
+            --border: #e5e7eb;
+            --primary: #111827;
+            --green: #16a34a;
+            --green-bg: #ecfdf3;
+            --orange: #d97706;
+            --red: #dc2626;
+            --blue: #2563eb;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+        }
+
+        body {
+
+            width: 380px;
+
+            max-width: 100vw;
+
+            max-height: 650px;
+
+            overflow-y: auto;
+
+            background:
+                linear-gradient(
+                    145deg,
+                    #f8fafc,
+                    #eef2ff
+                );
+
+            color: var(--text);
+
+            font-family:
+                Inter,
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                Arial,
+                sans-serif;
+
+            animation:
+                pageEnter 0.25s ease;
+        }
+
+        @keyframes pageEnter {
+
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .container {
+            padding: 18px;
+        }
+
+        /* =====================================================
+           HEADER
+        ===================================================== */
+
+        .header {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 12px;
+
+            margin-bottom: 16px;
+        }
+
+        .logo {
+
+            width: 44px;
+
+            height: 44px;
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            flex-shrink: 0;
+
+            border-radius: 13px;
+
+            background:
+                linear-gradient(
+                    135deg,
+                    #111827,
+                    #374151
+                );
+
+            font-size: 22px;
+
+            box-shadow:
+                0 6px 18px
+                rgba(17, 24, 39, 0.18);
+
+            animation:
+                floatLogo 3s ease-in-out infinite;
+        }
+
+        @keyframes floatLogo {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-2px);
+            }
+        }
+
+        .title-area {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .title {
+
+            margin: 0;
+
+            font-size: 18px;
+
+            font-weight: 750;
+
+            letter-spacing: -0.3px;
+        }
+
+        .subtitle {
+
+            margin-top: 3px;
+
+            font-size: 11px;
+
+            color: var(--muted);
+        }
+
+        .connection {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 5px;
+
+            font-size: 10px;
+
+            color: var(--muted);
+        }
+
+        .connection-dot {
+
+            width: 7px;
+
+            height: 7px;
+
+            border-radius: 50%;
+
+            background: #9ca3af;
+        }
+
+        .connection-dot.active {
+
+            background: var(--green);
+
+            box-shadow:
+                0 0 0 3px
+                rgba(22, 163, 74, 0.12);
+
+            animation:
+                pulse 1.8s infinite;
+        }
+
+        @keyframes pulse {
+
+            0% {
+                box-shadow:
+                    0 0 0 0
+                    rgba(22, 163, 74, 0.35);
+            }
+
+            70% {
+                box-shadow:
+                    0 0 0 5px
+                    rgba(22, 163, 74, 0);
+            }
+
+            100% {
+                box-shadow:
+                    0 0 0 0
+                    rgba(22, 163, 74, 0);
+            }
+        }
+
+        /* =====================================================
+           READ PAGE HERO
+        ===================================================== */
+
+        .hero {
+
+            position: relative;
+
+            overflow: hidden;
+
+            padding: 20px;
+
+            background: var(--card);
+
+            border:
+                1px solid
+                var(--border);
+
+            border-radius: 16px;
+
+            box-shadow:
+                0 8px 30px
+                rgba(15, 23, 42, 0.07);
+
+            margin-bottom: 12px;
+        }
+
+        .hero::before {
+
+            content: "";
+
+            position: absolute;
+
+            width: 130px;
+
+            height: 130px;
+
+            right: -55px;
+
+            top: -55px;
+
+            border-radius: 50%;
+
+            background:
+                rgba(99, 102, 241, 0.08);
+        }
+
+        .hero-icon {
+
+            width: 48px;
+
+            height: 48px;
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            border-radius: 14px;
+
+            background:
+                linear-gradient(
+                    135deg,
+                    #eef2ff,
+                    #e0e7ff
+                );
+
+            font-size: 24px;
+
+            margin-bottom: 12px;
+        }
+
+        .hero-title {
+
+            margin: 0 0 6px;
+
+            font-size: 18px;
+
+            font-weight: 750;
+        }
+
+        .hero-description {
+
+            margin: 0;
+
+            color: var(--muted);
+
+            font-size: 12px;
+
+            line-height: 1.55;
+        }
+
+        #readPageButton {
+
+            width: 100%;
+
+            margin-top: 16px;
+
+            border: none;
+
+            border-radius: 11px;
+
+            padding: 13px;
+
+            background:
+                linear-gradient(
+                    135deg,
+                    #111827,
+                    #374151
+                );
+
+            color: white;
+
+            font-size: 13px;
+
+            font-weight: 700;
+
+            cursor: pointer;
+
+            box-shadow:
+                0 6px 16px
+                rgba(17, 24, 39, 0.18);
+
+            transition:
+                transform 0.15s ease,
+                box-shadow 0.15s ease;
+        }
+
+        #readPageButton:hover {
+
+            transform: translateY(-1px);
+
+            box-shadow:
+                0 9px 20px
+                rgba(17, 24, 39, 0.22);
+        }
+
+        #readPageButton.loading {
+
+            opacity: 0.7;
+
+            cursor: wait;
+        }
+
+        #readPageButton.success {
+
+            background:
+                linear-gradient(
+                    135deg,
+                    #15803d,
+                    #16a34a
+                );
+        }
+
+        /* =====================================================
+           LOADING
+        ===================================================== */
+
+        .loading {
+
+            display: none;
+
+            align-items: center;
+
+            gap: 7px;
+
+            margin-top: 11px;
+
+            color: var(--muted);
+
+            font-size: 11px;
+        }
+
+        .loading.show {
+            display: flex;
+        }
+
+        .spinner {
+
+            width: 14px;
+
+            height: 14px;
+
+            border: 2px solid #d1d5db;
+
+            border-top-color: #111827;
+
+            border-radius: 50%;
+
+            animation:
+                spin 0.75s linear infinite;
+        }
+
+        @keyframes spin {
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* =====================================================
+           ERROR
+        ===================================================== */
+
+        #errorBox {
+
+            display: none;
+
+            padding: 11px 12px;
+
+            margin-bottom: 12px;
+
+            background: #fef2f2;
+
+            border:
+                1px solid
+                #fecaca;
+
+            border-radius: 10px;
+
+            color: #991b1b;
+
+            font-size: 11px;
+
+            line-height: 1.45;
+        }
+
+        #errorBox.show {
+            display: block;
+        }
+
+        /* =====================================================
+           PAGE RESULT
+        ===================================================== */
+
+        #pageResult {
+            display: none;
+        }
+
+        #pageResult.show {
+
+            display: block;
+
+            animation:
+                resultEnter 0.3s ease;
+        }
+
+        @keyframes resultEnter {
+
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .success-card {
+
+            padding: 13px;
+
+            margin-bottom: 10px;
+
+            background:
+                #ecfdf3;
+
+            border:
+                1px solid
+                #bbf7d0;
+
+            border-radius: 12px;
+        }
+
+        .success-header {
+
+            color: #166534;
+
+            font-size: 12px;
+
+            font-weight: 750;
+
+            margin-bottom: 5px;
+        }
+
+        .page-title {
+
+            color: #166534;
+
+            font-size: 11px;
+
+            white-space: nowrap;
+
+            overflow: hidden;
+
+            text-overflow: ellipsis;
+        }
+
+        /* =====================================================
+           STATS
+        ===================================================== */
+
+        .stats {
+
+            display: grid;
+
+            grid-template-columns:
+                repeat(2, 1fr);
+
+            gap: 8px;
+
+            margin-bottom: 10px;
+        }
+
+        .stat {
+
+            padding: 11px;
+
+            background: white;
+
+            border:
+                1px solid
+                var(--border);
+
+            border-radius: 11px;
+        }
+
+        .stat-number {
+
+            font-size: 18px;
+
+            font-weight: 750;
+        }
+
+        .stat-label {
+
+            margin-top: 4px;
+
+            font-size: 10px;
+
+            color: var(--muted);
+        }
+
+        /* =====================================================
+           MAIN AI CARD
+        ===================================================== */
+
+        .ai-card {
+
+            padding: 14px;
+
+            background: white;
+
+            border:
+                1px solid
+                var(--border);
+
+            border-radius: 14px;
+
+            box-shadow:
+                0 5px 18px
+                rgba(15, 23, 42, 0.04);
+
+            margin-bottom: 10px;
+        }
+
+        .ai-header {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 7px;
+
+            margin-bottom: 9px;
+
+            font-size: 12px;
+
+            font-weight: 750;
+        }
+
+        #questionInput {
+
+            width: 100%;
+
+            min-height: 76px;
+
+            resize: vertical;
+
+            padding: 10px 11px;
+
+            border:
+                1px solid
+                #d1d5db;
+
+            border-radius: 9px;
+
+            outline: none;
+
+            background: #fafafa;
+
+            color: var(--text);
+
+            font-family: inherit;
+
+            font-size: 12px;
+
+            line-height: 1.45;
+
+            transition:
+                border-color 0.15s ease,
+                box-shadow 0.15s ease;
+        }
+
+        #questionInput:focus {
+
+            border-color:
+                #6366f1;
+
+            box-shadow:
+                0 0 0 3px
+                rgba(99, 102, 241, 0.1);
+
+            background: white;
+        }
+
+        #askButton {
+
+            width: 100%;
+
+            margin-top: 9px;
+
+            padding: 11px;
+
+            border: none;
+
+            border-radius: 9px;
+
+            background: #111827;
+
+            color: white;
+
+            font-size: 12px;
+
+            font-weight: 700;
+
+            cursor: pointer;
+
+            transition:
+                transform 0.15s ease,
+                opacity 0.15s ease;
+        }
+
+        #askButton:hover {
+            opacity: 0.9;
+        }
+
+        #askButton:active {
+            transform: scale(0.985);
+        }
+
+        #askButton:disabled {
+
+            opacity: 0.55;
+
+            cursor: wait;
+        }
+
+        /* =====================================================
+           ANSWER INSIDE SAME CARD
+        ===================================================== */
+
+        #answerArea {
+
+            display: none;
+
+            margin-top: 14px;
+
+            padding-top: 13px;
+
+            border-top:
+                1px solid
+                var(--border);
+
+            animation:
+                answerEnter 0.25s ease;
+        }
+
+        #answerArea.show {
+            display: block;
+        }
+
+        @keyframes answerEnter {
+
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .answer-heading {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 6px;
+
+            margin-bottom: 7px;
+
+            font-size: 11px;
+
+            font-weight: 750;
+        }
+
+        #answerText {
+
+            color: #374151;
+
+            font-size: 12px;
+
+            line-height: 1.6;
+
+            white-space: pre-wrap;
+
+            word-break: break-word;
+        }
+
+        /* =====================================================
+           TOOLS
+        ===================================================== */
+
+        .tools-title {
+
+            margin: 3px 0 8px;
+
+            font-size: 11px;
+
+            font-weight: 750;
+        }
+
+        .tools {
+
+            display: grid;
+
+            grid-template-columns:
+                repeat(2, 1fr);
+
+            gap: 8px;
+
+            margin-bottom: 10px;
+        }
+
+        .tool {
+
+            padding: 11px;
+
+            border:
+                1px solid
+                var(--border);
+
+            border-radius: 10px;
+
+            background: white;
+
+            text-align: left;
+        }
+
+        .tool-top {
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: space-between;
+
+            margin-bottom: 4px;
+        }
+
+        .tool-name {
+
+            font-size: 10px;
+
+            font-weight: 700;
+        }
+
+        .tool-status {
+
+            font-size: 9px;
+
+            color: var(--green);
+
+            font-weight: 700;
+        }
+
+        .tool-description {
+
+            font-size: 9px;
+
+            color: var(--muted);
+
+            line-height: 1.4;
+        }
+
+        /* =====================================================
+           SECURITY
+        ===================================================== */
+
+        #securityResult {
+
+            display: none;
+
+            padding: 13px;
+
+            margin-bottom: 10px;
+
+            background: white;
+
+            border:
+                1px solid
+                var(--border);
+
+            border-radius: 12px;
+        }
+
+        #securityResult.show {
+            display: block;
+        }
+
+        .security-header {
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: space-between;
+
+            margin-bottom: 9px;
+        }
+
+        .security-title {
+
+            font-size: 11px;
+
+            font-weight: 750;
+        }
+
+        .security-total {
+
+            font-size: 9px;
+
+            color: var(--muted);
+        }
+
+        .security-grid {
+
+            display: grid;
+
+            grid-template-columns:
+                repeat(3, 1fr);
+
+            gap: 7px;
+        }
+
+        .security-stat {
+
+            padding: 9px 5px;
+
+            text-align: center;
+
+            border-radius: 9px;
+        }
+
+        .safe {
+            background: #ecfdf3;
+            color: #15803d;
+        }
+
+        .suspicious {
+            background: #fff7ed;
+            color: #c2410c;
+        }
+
+        .risky {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+
+        .security-number {
+
+            font-size: 16px;
+
+            font-weight: 750;
+        }
+
+        .security-label {
+
+            margin-top: 3px;
+
+            font-size: 9px;
+        }
+
+        /* =====================================================
+           FOOTER
+        ===================================================== */
+
+        .footer {
+
+            padding-top: 5px;
+
+            text-align: center;
+
+            color: #9ca3af;
+
+            font-size: 9px;
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+    <div class="container">
+
+        <!-- HEADER -->
+
+        <div class="header">
+
+            <div class="logo">
+                🤖
+            </div>
+
+            <div class="title-area">
+
+                <h1 class="title">
+                    AI Browser Mentor
+                </h1>
+
+                <div class="subtitle">
+                    Your intelligent web companion
+                </div>
+
+            </div>
+
+            <div class="connection">
+
+                <span
+                    id="connectionDot"
+                    class="connection-dot"
+                ></span>
+
+                <span id="connectionText">
+                    Ready
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <!-- READ PAGE -->
+
+        <div class="hero">
+
+            <div class="hero-icon">
+                📖
+            </div>
+
+            <h2 class="hero-title">
+                Understand this webpage
+            </h2>
+
+            <p class="hero-description">
+                Read the current page to activate
+                AI questioning, page scanning,
+                navigation, and hover protection.
+            </p>
+
+            <button
+                id="readPageButton"
+                type="button"
+            >
+                📖 Read Current Page
+            </button>
+
+            <div
+                id="loadingIndicator"
+                class="loading"
+            >
+
+                <div class="spinner"></div>
+
+                <span id="loadingText">
+                    Reading page...
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <!-- ERROR -->
+
+        <div
+            id="errorBox"
+        ></div>
+
+
+        <!-- PAGE RESULT -->
+
+        <div id="pageResult">
+
+            <div class="success-card">
+
+                <div class="success-header">
+                    ✓ PAGE UNDERSTOOD
+                </div>
+
+                <div
+                    id="pageTitle"
+                    class="page-title"
+                >
+                    Current webpage
+                </div>
+
+            </div>
+
+
+            <!-- STATS -->
+
+            <div class="stats">
+
+                <div class="stat">
+
+                    <div
+                        id="chunkCount"
+                        class="stat-number"
+                    >
+                        0
+                    </div>
+
+                    <div class="stat-label">
+                        Content chunks
+                    </div>
+
+                </div>
+
+
+                <div class="stat">
+
+                    <div
+                        id="imageCount"
+                        class="stat-number"
+                    >
+                        0
+                    </div>
+
+                    <div class="stat-label">
+                        Images
+                    </div>
+
+                </div>
+
+
+                <div class="stat">
+
+                    <div
+                        id="linkCount"
+                        class="stat-number"
+                    >
+                        0
+                    </div>
+
+                    <div class="stat-label">
+                        Links
+                    </div>
+
+                </div>
+
+
+                <div class="stat">
+
+                    <div
+                        id="elementCount"
+                        class="stat-number"
+                    >
+                        0
+                    </div>
+
+                    <div class="stat-label">
+                        Interactive elements
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- =================================================
+                 SINGLE AI CARD
+            ================================================== -->
+
+            <div class="ai-card">
+
+                <div class="ai-header">
+                    🧠 Ask about this page
+                </div>
+
+                <textarea
+                    id="questionInput"
+                    placeholder="Ask anything about this page...&#10;&#10;Examples:&#10;• Summarize this page&#10;• What is the main topic?&#10;• Take me to the search box"
+                ></textarea>
+
+                <button
+                    id="askButton"
+                    type="button"
+                >
+                    Ask Mentor
+                </button>
+
+
+                <!-- ANSWER IS INSIDE SAME CARD -->
+
+                <div
+                    id="answerArea"
+                >
+
+                    <div class="answer-heading">
+                        🤖 Mentor
+                    </div>
+
+                    <div
+                        id="answerText"
+                    ></div>
+
+                </div>
+
+            </div>
+
+
+            <!-- ACTIVE TOOLS -->
+
+            <div class="tools-title">
+                ⚡ Active tools
+            </div>
+
+            <div class="tools">
+
+                <div class="tool">
+
+                    <div class="tool-top">
+
+                        <span class="tool-name">
+                            🔍 Page Scanner
+                        </span>
+
+                        <span class="tool-status">
+                            ON
+                        </span>
+
+                    </div>
+
+                    <div class="tool-description">
+                        Links are analyzed for potential risks.
+                    </div>
+
+                </div>
+
+
+                <div class="tool">
+
+                    <div class="tool-top">
+
+                        <span class="tool-name">
+                            🛡 Hover Guard
+                        </span>
+
+                        <span class="tool-status">
+                            ON
+                        </span>
+
+                    </div>
+
+                    <div class="tool-description">
+                        Hover over a link to see its security status.
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- SECURITY RESULT -->
+
+            <div id="securityResult">
+
+                <div class="security-header">
+
+                    <div class="security-title">
+                        🛡 Security Scan
+                    </div>
+
+                    <div
+                        id="securityTotal"
+                        class="security-total"
+                    >
+                        0 links
+                    </div>
+
+                </div>
+
+                <div class="security-grid">
+
+                    <div class="security-stat safe">
+
+                        <div
+                            id="safeCount"
+                            class="security-number"
+                        >
+                            0
+                        </div>
+
+                        <div class="security-label">
+                            Safe
+                        </div>
+
+                    </div>
+
+
+                    <div class="security-stat suspicious">
+
+                        <div
+                            id="suspiciousCount"
+                            class="security-number"
+                        >
+                            0
+                        </div>
+
+                        <div class="security-label">
+                            Suspicious
+                        </div>
+
+                    </div>
+
+
+                    <div class="security-stat risky">
+
+                        <div
+                            id="riskyCount"
+                            class="security-number"
+                        >
+                            0
+                        </div>
+
+                        <div class="security-label">
+                            High Risk
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="footer">
+            AI Browser Mentor • Intelligent browsing assistance
+        </div>
+
+    </div>
+
+
+    <script src="popup.js"></script>
+
+</body>
+
+</html>
