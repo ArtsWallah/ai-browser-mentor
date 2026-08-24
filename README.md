@@ -4,58 +4,64 @@
 
 AI Browser Mentor is an AI-powered browser assistant that allows users to ask questions about webpages in natural language.
 
-Instead of sending an entire webpage directly to an LLM, the system extracts and structures webpage content, creates vector embeddings, retrieves the most relevant sections using FAISS, and then sends only relevant context to the LLM.
+Instead of sending an entire webpage directly to an LLM, the system extracts and structures webpage content, converts it into embeddings, retrieves the most relevant context using FAISS, and generates a grounded response using Groq.
 
-## 🚀 Live Backend
-
-https://ai-browser-mentor.onrender.com
+---
 
 ## ✨ Features
 
+- 🧠 Retrieval-Augmented Generation (RAG)
 - 🔍 Webpage content extraction
-- 🧠 RAG-based question answering
-- 📚 Semantic retrieval using FAISS
-- ⚡ FastEmbed embeddings
+- 📚 Semantic search using FAISS
+- ⚡ FastEmbed-based embeddings
 - 🤖 Groq-powered LLM responses
 - 🖼️ Image extraction and analysis
-- 🔗 Link and interactive-element scanning
+- 🔗 Link and interactive-element analysis
 - 🛡️ Suspicious-link detection
 - 📑 Section-aware webpage understanding
-- 🌐 Works with dynamically loaded webpages
-- 🔌 Chrome Extension interface
+- 🌐 Chrome Extension interface
 - ☁️ Deployed FastAPI backend
+
+---
+
+## 🎬 Demo
+
+> Add your demo GIF here.
+
+---
 
 ## 🏗️ Architecture
 
 ```text
-                  ┌─────────────────────┐
-                  │    Chrome Browser   │
-                  │                     │
-                  │  AI Browser Mentor  │
-                  └──────────┬──────────┘
-                             │
-                             │ HTTPS
-                             ▼
-                  ┌─────────────────────┐
-                  │     FastAPI API     │
-                  │       Render        │
-                  └──────────┬──────────┘
-                             │
-                 ┌───────────┴───────────┐
-                 │                       │
-                 ▼                       ▼
-          ┌──────────────┐       ┌──────────────┐
-          │   FastEmbed  │       │     FAISS    │
-          │  Embeddings  │──────▶│ Vector Store │
-          └──────────────┘       └───────┬──────┘
-                                        │
-                                        │ Top-K
-                                        │ Context
-                                        ▼
-                              ┌──────────────────┐
-                              │   Groq LLM       │
-                              │  GPT-OSS 20B     │
-                              └────────┬─────────┘
-                                       │
-                                       ▼
-                                  AI Response
+                     ┌──────────────────────┐
+                     │      Web Browser     │
+                     │                      │
+                     │  AI Browser Mentor   │
+                     └──────────┬───────────┘
+                                │
+                                │ HTTPS
+                                ▼
+                     ┌──────────────────────┐
+                     │      FastAPI         │
+                     │      Backend         │
+                     │      Render          │
+                     └──────────┬───────────┘
+                                │
+                    ┌───────────┴───────────┐
+                    │                       │
+                    ▼                       ▼
+             ┌──────────────┐       ┌──────────────┐
+             │   FastEmbed  │       │     FAISS    │
+             │  Embeddings  │──────▶│ Vector Store │
+             └──────────────┘       └───────┬──────┘
+                                            │
+                                            │ Relevant
+                                            │ Context
+                                            ▼
+                                  ┌──────────────────┐
+                                  │     Groq LLM     │
+                                  │   GPT-OSS 20B    │
+                                  └────────┬─────────┘
+                                           │
+                                           ▼
+                                    Grounded Answer
