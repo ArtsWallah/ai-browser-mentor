@@ -19,10 +19,10 @@ class Chunk(BaseModel):
 class PageDocument(BaseModel):
 
     page_id: str
-    
+
     title: str
     url: str
-    hostname: str
+    hostname: str   
     description: str
 
     headings: list[str]

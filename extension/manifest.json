@@ -1,4 +1,4 @@
-{
+﻿{
   "manifest_version": 3,
 
   "name": "AI Browser Mentor",
@@ -21,9 +21,7 @@
     "service_worker": "background.js"
   },
 
-  "action": {
-    "default_title": "AI Browser Mentor"
-  },
+  "action": { "default_title": "AI Browser Mentor", "default_popup": "popup.html" },
 
   "content_scripts": [
     {
