@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
   "use strict";
 
   const API_BASE_URL = "https://ai-browser-mentor.onrender.com";
@@ -1490,7 +1490,7 @@ function navigation(q) {
                 handled: true,
                 ok: true,
                 msg:
-                    `I found the relevant image: “${image.caption.slice(0, 120)}”.`
+                    `I found the relevant image: â€œ${image.caption.slice(0, 120)}â€.`
             };
         }
 
@@ -1498,7 +1498,7 @@ function navigation(q) {
             handled: true,
             ok: false,
             msg:
-                `I couldn't confidently locate an image matching “${q}” on this page.`
+                `I couldn't confidently locate an image matching â€œ${q}â€ on this page.`
         };
     }
     // ========================================================
@@ -1569,9 +1569,9 @@ function navigation(q) {
                 handled: true,
                 ok: true,
                 msg:
-                    `I found the section “${label(
+                    `I found the section â€œ${label(
                         section.element
-                    ).slice(0, 120)}” and highlighted it.`
+                    ).slice(0, 120)}â€ and highlighted it.`
             };
         }
     }
@@ -1638,9 +1638,9 @@ if (
             handled: true,
             ok: true,
             msg:
-                `I found the closest matching element: “${label(
+                `I found the closest matching element: â€œ${label(
                     f.element
-                ).slice(0, 120)}”.`
+                ).slice(0, 120)}â€.`
         };
     }
 
@@ -1652,7 +1652,7 @@ if (
         handled: true,
         ok: false,
         msg:
-            `I couldn't confidently locate “${q2}” on this page.`
+            `I couldn't confidently locate â€œ${q2}â€ on this page.`
     };
 }
   // ============================================================
@@ -1716,7 +1716,7 @@ if (
         ${esc(
           r.reasons
             .slice(0,3)
-            .join(" • ") ||
+            .join(" â€¢ ") ||
           "No heuristic warning"
         )}
       </div>
@@ -2227,7 +2227,7 @@ function enableHover() {
 css.textContent = `
 
 /* ============================================================
-   AI BROWSER MENTOR — PREMIUM UI
+   AI BROWSER MENTOR â€” PREMIUM UI
    ============================================================ */
 
 * {
@@ -2341,7 +2341,7 @@ css.textContent = `
 }
 
 .brand::before {
-  content: "✦";
+  content: "âœ¦";
 
   display: inline-flex;
   align-items: center;
@@ -3326,9 +3326,9 @@ textarea:focus {
 
 
         <div class="hint">
-          Try: “find the history section”,
-          “where is the search box?”,
-          or “how do I use this page?”
+          Try: â€œfind the history sectionâ€,
+          â€œwhere is the search box?â€,
+          or â€œhow do I use this page?â€
         </div>
 
       </div>
@@ -3742,7 +3742,7 @@ function renderScan(s) {
         reasons.length
           ? reasons
               .slice(0, 3)
-              .join(" • ")
+              .join(" â€¢ ")
           : "Suspicious URL characteristics detected.";
 
 
@@ -3832,7 +3832,7 @@ function renderScan(s) {
             `Suspicious link: ${
               item.reasons
                 ?.slice(0, 2)
-                .join(" • ") ||
+                .join(" â€¢ ") ||
               "Suspicious signals detected"
             }`
           );
@@ -3948,8 +3948,8 @@ if (S.hoverEnabled) {
 
 
       el.meta.textContent =
-        `Page understood • ` +
-        `${page.stats.chunks} sections • ` +
+        `Page understood` +
+        `${page.stats.chunks} sections â€¢ ` +
         `${page.stats.links} links`;
 
 
@@ -4295,6 +4295,39 @@ if (S.hoverEnabled) {
       const t =
         m?.type;
 
+      if (t === "SCAMSHIELD_GET_GMAIL_EMAIL") {
+        try {
+          if (!location.hostname.endsWith("mail.google.com")) {
+            send({ success: false, message: "Open Gmail and select an email first." });
+            return false;
+          }
+
+          const subject = document.querySelector("h2.hP")?.innerText?.trim() || "";
+          const sender = document.querySelector("span[email]")?.getAttribute("email") || "";
+          const body = Array.from(document.querySelectorAll("div.a3s"))
+            .map(el => el.innerText.trim())
+            .filter(Boolean)
+            .join("\n\n");
+
+          if (!subject && !body) {
+            send({ success: false, message: "Open an individual Gmail message, then try again." });
+            return false;
+          }
+
+          send({
+            success: true,
+            subject,
+            sender,
+            message: [subject ? "Subject: " + subject : "", sender ? "Sender: " + sender : "", body]
+              .filter(Boolean).join("\n\n").slice(0, 10000)
+          });
+        } catch (e) {
+          send({ success: false, message: "Could not extract the open Gmail message." });
+        }
+        return false;
+      }
+
+
 
       if (
         t ===
@@ -4391,8 +4424,7 @@ if (S.hoverEnabled) {
         t === "TOGGLE_MENTOR"
       ) {
 
-        if (!host)
-          createUI();
+        // Floating UI disabled; use the Chrome toolbar popup instead.
 
 
         send({
@@ -4462,9 +4494,8 @@ if (S.hoverEnabled) {
           disableHover();
 
         } else if (!host) {
-
-          createUI();
-        }
+    // Floating UI disabled; use the Chrome toolbar popup instead.
+}
 
 
         send({
@@ -4547,3 +4578,4 @@ if (S.hoverEnabled) {
     }
   );
 })();
+

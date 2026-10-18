@@ -2511,3 +2511,27 @@ async def startup():
     print(
         "==============================================\n"
     )
+# ============================================================
+# SCAMSHIELD TEXT ANALYSIS
+# ============================================================
+
+from app.scamshield_service import analyze_message
+
+
+class ScamShieldTextRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=10000)
+
+
+@app.post("/scamshield/analyze-text")
+def scamshield_analyze_text(request: ScamShieldTextRequest):
+    message = request.message.strip()
+
+    if not message:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail="Message cannot be blank.")
+
+    try:
+        return analyze_message(message)
+    except RuntimeError as error:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail=str(error)) from error
