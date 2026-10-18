@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // AI BROWSER MENTOR - POPUP
 // ============================================================
 
@@ -717,7 +717,7 @@ function showPageResult(
     if (readPageButton) {
 
         readPageButton.textContent =
-            "✓ Page Read Successfully";
+            "Page Read Successfully";
 
         readPageButton.classList.add(
             "success"
@@ -1581,3 +1581,128 @@ questionInput?.addEventListener(
 // ============================================================
 
 initialize();
+// SCAMSHIELD_EMAIL_ANALYSIS_HANDLER
+const scamShieldEmailButton = document.getElementById("scamShieldEmailButton");
+const scamShieldEmailStatus = document.getElementById("scamShieldEmailStatus");
+const scamShieldEmailResults = document.getElementById("scamShieldEmailResults");
+
+scamShieldEmailButton?.addEventListener("click", async () => {
+    scamShieldEmailButton.disabled = true;
+    scamShieldEmailStatus.textContent = "Reading the open Gmail message...";
+    scamShieldEmailResults.hidden = true;
+    scamShieldEmailResults.replaceChildren();
+
+    try {
+        const tab = await getCurrentTab();
+
+        if (!tab?.id || !tab.url?.startsWith("https://mail.google.com/")) {
+            throw new Error("Open Gmail and select an individual email first.");
+        }
+
+        const email = await chrome.tabs.sendMessage(tab.id, {
+            type: "SCAMSHIELD_GET_GMAIL_EMAIL"
+        });
+
+        if (!email?.success || !email.message) {
+            throw new Error(email?.message || "Could not extract the email.");
+        }
+
+        scamShieldEmailStatus.textContent = "Analyzing email tactics...";
+
+        const response = await fetch(`${BACKEND_URL}/scamshield/analyze-text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: email.message })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.detail || "The analysis request failed.");
+        }
+
+        const heading = document.createElement("h3");
+        heading.textContent = `Tactic analysis: ${email.subject || "Opened email"}`;
+        scamShieldEmailResults.appendChild(heading);
+// Final verdict based on available tactic predictions.
+// This is a risk assessment, not proof of fraud or legitimacy.
+const availableResults = (data.results || []).filter(
+    item => item.available === true && typeof item.detected === "boolean"
+);
+const detectedResults = availableResults.filter(item => item.detected);
+const verdictCard = document.createElement("div");
+verdictCard.className = "verdict-card";
+
+const verdictTitle = document.createElement("span");
+verdictTitle.className = "verdict-title";
+
+const verdictDetail = document.createElement("span");
+verdictDetail.className = "verdict-detail";
+
+if (availableResults.length === 0) {
+    verdictTitle.textContent = "Inconclusive";
+    verdictTitle.style.color = "#b45309";
+    verdictDetail.textContent =
+        "No usable tactic predictions are available. Do not rely on this result.";
+} else if (detectedResults.length >= 2) {
+    verdictTitle.textContent = "Likely Suspicious";
+    verdictTitle.style.color = "#b91c1c";
+    verdictDetail.textContent =
+        `${detectedResults.length} suspicious tactic signal(s) detected. Treat this email cautiously and verify claims independently.`;
+} else if (detectedResults.length === 1) {
+    verdictTitle.textContent = "Needs Caution";
+    verdictTitle.style.color = "#b45309";
+    verdictDetail.textContent =
+        "A suspicious tactic signal was detected. Review the email and verify the sender before taking action.";
+} else if (availableResults.length < (data.results || []).length) {
+    verdictTitle.textContent = "Inconclusive";
+    verdictTitle.style.color = "#b45309";
+    verdictDetail.textContent =
+        "No signals were detected by the available checks, but some checks were unavailable. This does not establish that the email is genuine.";
+} else {
+    verdictTitle.textContent = "No Strong Scam Signals";
+    verdictTitle.style.color = "#15803d";
+    verdictDetail.textContent =
+        "The available tactic checks found no strong signals. This does not guarantee that the email is genuine.";
+}
+
+verdictCard.append(verdictTitle, verdictDetail);
+scamShieldEmailResults.appendChild(verdictCard);
+
+        for (const item of data.results || []) {
+            const row = document.createElement("div");
+            row.className = "tactic-row"; row.style.cssText = "padding:8px 0;border-bottom:1px solid #e5e7eb";
+
+            const name = document.createElement("strong");
+            name.textContent = String(item.tactic).replaceAll("_", " ");
+            row.appendChild(name);
+
+            const detail = document.createElement("div");
+            if (item.available === false || item.detected === null) {
+                detail.textContent = "Unavailable - this tactic cannot currently be assessed.";
+            } else {
+                const percent = Number.isFinite(item.score)
+                    ? ` (model score: ${(item.score * 100).toFixed(1)}%)`
+                    : "";
+                detail.textContent = `${item.detected ? "Potential signal detected" : "Not detected"}${percent}`;
+            }
+
+            row.appendChild(detail);
+            scamShieldEmailResults.appendChild(row);
+        }
+
+        const disclaimer = document.createElement("p");
+        disclaimer.style.cssText = "font-size:12px;color:#6b7280;margin-top:10px";
+        disclaimer.textContent = data.disclaimer || "Experimental model output; not a definitive scam verdict.";
+        scamShieldEmailResults.appendChild(disclaimer);
+
+        scamShieldEmailResults.hidden = false;
+        scamShieldEmailStatus.textContent = "Analysis complete.";
+    } catch (error) {
+        scamShieldEmailStatus.textContent = error?.message || "Email analysis failed.";
+    } finally {
+        scamShieldEmailButton.disabled = false;
+    }
+});
+
+
