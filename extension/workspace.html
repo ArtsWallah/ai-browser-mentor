@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Browser Mentor — Research Workspace</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #090e1b;
+            --surface: #111a2d;
+            --surface-raised: #17233a;
+            --surface-hover: #202e49;
+            --border: rgba(161, 177, 213, 0.15);
+            --border-focus: rgba(130, 116, 255, 0.5);
+            --text: #f3f6ff;
+            --text-secondary: #c0ccdf;
+            --muted: #97a6c3;
+            --primary: #8274ff;
+            --primary-hover: #958aff;
+            --primary-glow: rgba(130, 116, 255, 0.25);
+            --cyan: #62d9f5;
+            --success: #50dfb0;
+            --success-bg: rgba(80, 223, 176, 0.12);
+            --warning: #ffc86b;
+            --warning-bg: rgba(255, 200, 107, 0.12);
+            --danger: #ff788e;
+            --danger-bg: rgba(255, 120, 142, 0.12);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 20px;
+            --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background:
+                radial-gradient(ellipse at 85% 0%, rgba(99, 81, 230, 0.20), transparent 45%),
+                radial-gradient(ellipse at 10% 100%, rgba(98, 217, 245, 0.10), transparent 40%),
+                var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+            font-size: 13px;
+            line-height: 1.5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* HEADER */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 28px;
+            background: rgba(17, 26, 45, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo {
+            width: 40px;
+            height: 40px;
+            display: grid;
+            place-items: center;
+            border-radius: var(--radius-md);
+            color: white;
+            font-size: 15px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #9182ff, #5c4ad6 65%, #3e9fd8);
+            box-shadow: 0 4px 16px var(--primary-glow);
+        }
+
+        .title-area h1 {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+
+        .subtitle {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .badge-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: var(--success-bg);
+            color: var(--success);
+            border: 1px solid rgba(80, 223, 176, 0.3);
+        }
+
+        /* MAIN TWO-COLUMN LAYOUT */
+        .main-layout {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 24px;
+            padding: 24px 28px;
+            flex: 1;
+            max-width: 1400px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        @media (max-width: 900px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* LEFT SIDEBAR: SOURCES & WORKSPACES */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            box-shadow: var(--shadow);
+        }
+
+        .card-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .workspace-control-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .workspace-select {
+            flex: 1;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 8px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .workspace-select:focus {
+            border-color: var(--primary);
+        }
+
+        .btn-icon {
+            width: 32px;
+            height: 32px;
+            display: grid;
+            place-items: center;
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .btn-icon:hover {
+            color: var(--cyan);
+            border-color: var(--cyan);
+            background: rgba(98, 217, 245, 0.1);
+        }
+
+        .btn-icon.danger:hover {
+            color: var(--danger);
+            border-color: var(--danger);
+            background: var(--danger-bg);
+        }
+
+        .sources-scroll-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: calc(100vh - 350px);
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .source-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+
+        .source-card:hover {
+            border-color: rgba(130, 116, 255, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .source-card-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .source-card-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.35;
+        }
+
+        .source-card-meta {
+            font-size: 10px;
+            color: var(--muted);
+            display: flex;
+            gap: 10px;
+        }
+
+        .source-card-excerpt {
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.45;
+        }
+
+        .source-card-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 4px;
+            padding-top: 6px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .link-ext {
+            font-size: 11px;
+            color: var(--cyan);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .link-ext:hover {
+            text-decoration: underline;
+        }
+
+        .btn-remove-source {
+            background: none;
+            border: none;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .btn-remove-source:hover {
+            color: var(--danger);
+            background: var(--danger-bg);
+        }
+
+        /* RIGHT PANE: RESEARCH WORKSPACE & SYNTHESIS */
+        .workspace-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .research-omnibar {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: var(--shadow);
+        }
+
+        .query-textarea {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 12px 14px;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 13px;
+            line-height: 1.5;
+            resize: vertical;
+            min-height: 70px;
+            outline: none;
+            transition: border-color 0.15s ease;
+        }
+
+        .query-textarea:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 2px var(--primary-glow);
+        }
+
+        .action-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), #6351e6);
+            color: white;
+            font-weight: 600;
+            font-size: 12px;
+            padding: 8px 18px;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+            box-shadow: 0 4px 12px var(--primary-glow);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, var(--primary-hover), #7463f2);
+            transform: translateY(-1px);
+        }
+
+        .btn-chip {
+            background: var(--surface-raised);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 8px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+
+        .btn-chip:hover {
+            border-color: var(--cyan);
+            color: var(--cyan);
+            background: rgba(98, 217, 245, 0.08);
+        }
+
+        /* RESULTS AREA */
+        .results-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            box-shadow: var(--shadow);
+            min-height: 250px;
+        }
+
+        .state-empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--muted);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .state-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            gap: 12px;
+        }
+
+        .loading-pulse {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 3px solid rgba(130, 116, 255, 0.2);
+            border-top-color: var(--cyan);
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .citation-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 10px;
+            margin-top: 6px;
+        }
+
+        .citation-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--cyan);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-size: 11px;
+        }
+
+        .alert-box {
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            display: none;
+        }
+
+        .alert-box.show {
+            display: block;
+        }
+
+        .alert-box.error {
+            background: var(--danger-bg);
+            border: 1px solid rgba(255, 120, 142, 0.4);
+            color: #ff9fb0;
+        }
+
+        .alert-box.info {
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .findings-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .finding-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 8px 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .footer {
+            text-align: center;
+            font-size: 11px;
+            color: var(--muted);
+            padding: 16px;
+            border-top: 1px solid var(--border);
+            margin-top: auto;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="brand">
+            <div class="logo">BM</div>
+            <div class="title-area">
+                <h1>AI Browser Mentor &bull; Research Workspace</h1>
+                <div class="subtitle">Multi-Tab Evidence Collection & Cross-Source Synthesis</div>
+            </div>
+        </div>
+        <div class="header-actions">
+            <span class="badge-status" id="wsSyncStatus">Storage: Persistent & Local</span>
+        </div>
+    </header>
+
+    <div class="main-layout">
+        <!-- LEFT COLUMN: WORKSPACES & SAVED SOURCES -->
+        <aside class="sidebar">
+            <!-- WORKSPACE MANAGEMENT CARD -->
+            <div class="card">
+                <div class="card-title">
+                    <span>Research Workspace</span>
+                    <span id="wsSourceCountLabel" style="font-size: 11px; color: var(--cyan);">0 Sources</span>
+                </div>
+                <div class="workspace-control-bar">
+                    <select class="workspace-select" id="workspaceSelect" title="Select Research Workspace"></select>
+                    <button class="btn-icon" id="btnNewWorkspace" title="Create New Workspace">➕</button>
+                    <button class="btn-icon" id="btnRenameWorkspace" title="Rename Workspace">✏️</button>
+                    <button class="btn-icon danger" id="btnDeleteWorkspace" title="Delete Workspace">🗑️</button>
+                </div>
+                <div class="alert-box" id="sidebarAlert"></div>
+            </div>
+
+            <!-- SAVED SOURCES LIST CARD -->
+            <div class="card" style="flex: 1;">
+                <div class="card-title">
+                    <span>Collected Webpages</span>
+                </div>
+                <div class="sources-scroll-list" id="sourcesListContainer">
+                    <div class="state-empty" id="sourcesEmptyState">
+                        <div style="font-size: 24px;">📂</div>
+                        <div style="font-weight: 700; color: var(--text);">No sources saved</div>
+                        <div style="font-size: 11px;">Open pages in other tabs and click "Add Page" in the extension popup to collect them here.</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- RIGHT COLUMN: CROSS-SOURCE RESEARCH & SYNTHESIS -->
+        <main class="workspace-content">
+            <!-- RESEARCH OMNIBAR -->
+            <div class="research-omnibar">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 13px; font-weight: 700; color: var(--text);">Cross-Source Query & Comparison</span>
+                    <span style="font-size: 11px; color: var(--cyan);">Anti-Hallucination Grounding Active</span>
+                </div>
+                <textarea class="query-textarea" id="wsQueryInput" placeholder="Ask questions or compare claims across all saved sources... (e.g. 'What are the main arguments presented?', 'Compare the conclusions of these articles', 'Are there any contradictory statistics?')"></textarea>
+                <div class="action-row">
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn-chip" id="btnCompareSources" type="button">⚖️ Compare Sources</button>
+                    </div>
+                    <button class="btn-primary" id="btnAskSources" type="button">
+                        <span id="askBtnSpinner" style="display: none;" class="loading-pulse"></span>
+                        <span id="askBtnText">🔍 Synthesize Answers</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- RESULTS / SYNTHESIS PANEL -->
+            <div class="results-panel" id="resultsPanel">
+                <!-- EMPTY STATE -->
+                <div class="state-empty" id="resultsEmptyState">
+                    <div style="font-size: 32px;">🧠</div>
+                    <div style="font-weight: 700; font-size: 14px; color: var(--text);">Ready for Cross-Source Synthesis</div>
+                    <div style="font-size: 12px; max-width: 480px;">Enter a query above or click "Compare Sources" to synthesize evidence across all saved pages with verified citations.</div>
+                </div>
+
+                <!-- LOADING STATE -->
+                <div class="state-loading" id="resultsLoadingState" style="display: none;">
+                    <div class="loading-pulse"></div>
+                    <div style="font-weight: 700; font-size: 13px; color: var(--text);" id="loadingTitle">Retrieving passages and synthesizing cross-source evidence...</div>
+                    <div style="font-size: 11px; color: var(--muted);">Extracting matching excerpts and generating grounded citations</div>
+                </div>
+
+                <!-- RESULT CONTAINER -->
+                <div id="resultContentArea" style="display: none; flex-direction: column; gap: 16px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="badge-status" id="resultModeBadge">Research Synthesis</span>
+                            <span id="resultProviderBadge" style="font-size: 11px; color: var(--muted);">Provider: Grounded LLM</span>
+                        </div>
+                        <button class="btn-chip" id="btnCopyAnswer" type="button" style="font-size: 11px; padding: 4px 10px;">📋 Copy Synthesis</button>
+                    </div>
+
+                    <!-- ANSWER TEXT -->
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <div style="font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase;">Synthesized Output</div>
+                        <div id="resultAnswerText" style="font-size: 13px; line-height: 1.6; white-space: pre-wrap; color: var(--text);"></div>
+                    </div>
+
+                    <!-- COMPARISON SECTIONS -->
+                    <div id="compareBreakdown" style="display: none; flex-direction: column; gap: 12px;">
+                        <div>
+                            <span style="font-size: 11px; font-weight: 700; color: var(--success); text-transform: uppercase;">Points of Agreement</span>
+                            <div class="findings-list" id="agreementsList" style="margin-top: 4px;"></div>
+                        </div>
+                        <div>
+                            <span style="font-size: 11px; font-weight: 700; color: var(--warning); text-transform: uppercase;">Disagreements & Differences</span>
+                            <div class="findings-list" id="disagreementsList" style="margin-top: 4px;"></div>
+                        </div>
+                        <div>
+                            <span style="font-size: 11px; font-weight: 700; color: var(--danger); text-transform: uppercase;">Unverified Claims</span>
+                            <div class="findings-list" id="unverifiedList" style="margin-top: 4px;"></div>
+                        </div>
+                    </div>
+
+                    <!-- CITATIONS -->
+                    <div id="citationsSection" style="display: flex; flex-direction: column; gap: 8px;">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--cyan); text-transform: uppercase;">Supporting Source Citations</span>
+                        <div class="citation-grid" id="citationsGrid"></div>
+                    </div>
+
+                    <div style="font-size: 11px; color: var(--muted); font-style: italic; text-align: center; margin-top: 8px;" id="resultLimitationsText">
+                        Evidence grounded in saved source passages.
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <footer class="footer">
+        AI Browser Mentor &bull; Persistent Research Workspace &bull; Untrusted Data Isolation Guardrails Active
+    </footer>
+
+    <script src="workspace_store.js"></script>
+    <script src="workspace.js"></script>
+</body>
+</html>

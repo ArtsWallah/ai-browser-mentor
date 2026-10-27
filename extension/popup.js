@@ -134,11 +134,15 @@ function switchTab(targetPanelId) {
     tabPanels.forEach(panel => {
         panel.classList.toggle("active", panel.id === targetPanelId);
     });
+
+    if (targetPanelId === "panelWorkspace") {
+        loadAndRenderWorkspace();
+    }
 }
 
 function isRestrictedUrl(url) {
     if (!url) return true;
-    const lower = url.toLowerCase();
+    const lower = url.toLowerCase().trim();
     return (
         lower.startsWith("chrome://") ||
         lower.startsWith("chrome-extension://") ||
@@ -146,9 +150,70 @@ function isRestrictedUrl(url) {
         lower.startsWith("about:") ||
         lower.startsWith("view-source:") ||
         lower.startsWith("file://") ||
+        lower.startsWith("data:") ||
+        lower.startsWith("javascript:") ||
         lower.includes("chromewebstore.google.com") ||
         lower.includes("chrome.google.com/webstore")
     );
+}
+
+// ============================================================
+// CONTENT SCRIPT COMMUNICATION & RECOVERY STRATEGY
+// ============================================================
+
+async function sendTabMessageWithRecovery(tabId, message, timeoutMs = 3500) {
+    if (!tabId || tabId < 0) {
+        throw new Error("No active browser tab found.");
+    }
+
+    const url = currentTab?.url || "";
+    if (isRestrictedUrl(url)) {
+        throw new Error("Chrome extensions cannot run on internal browser pages or the Chrome Web Store. Please open an ordinary webpage (e.g. https://www.python.org).");
+    }
+
+    // 1. Attempt direct message sending first
+    try {
+        const resp = await Promise.race([
+            chrome.tabs.sendMessage(tabId, message),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Direct connection timed out")), 1500))
+        ]);
+        if (resp !== undefined) {
+            return resp;
+        }
+    } catch (directErr) {
+        console.log("Direct tab message failed, attempting recovery injection:", directErr?.message);
+    }
+
+    // 2. If direct message failed, inject content.js via scripting API
+    if (chrome.scripting && chrome.scripting.executeScript) {
+        try {
+            await chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                files: ["content.js"]
+            });
+            // Brief pause for script evaluation and listener registration
+            await new Promise(r => setTimeout(r, 120));
+        } catch (injectErr) {
+            console.warn("Script injection failed:", injectErr);
+            throw new Error(`Cannot run content script on this page: ${injectErr.message || "access denied"}`);
+        }
+
+        // 3. Retry sending message after injection
+        try {
+            const retryResp = await Promise.race([
+                chrome.tabs.sendMessage(tabId, message),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Response timed out after script injection")), timeoutMs))
+            ]);
+            if (retryResp !== undefined) {
+                return retryResp;
+            }
+        } catch (retryErr) {
+            console.error("Retry message failed:", retryErr);
+            throw new Error(`Content script communication failed: ${retryErr.message || "no response"}`);
+        }
+    }
+
+    throw new Error("Could not connect to page content script. Please ensure the page is fully loaded.");
 }
 
 function escapeHtml(str) {
@@ -253,7 +318,7 @@ async function resolveActiveTab() {
 async function detectUserSelection() {
     if (!currentTab?.id || isRestrictedUrl(currentTab.url)) return;
     try {
-        const resp = await chrome.tabs.sendMessage(currentTab.id, { type: "GET_SELECTION" });
+        const resp = await sendTabMessageWithRecovery(currentTab.id, { type: "GET_SELECTION" }, 1500);
         if (resp && resp.has_selection && resp.selection) {
             currentSelection = resp.selection.trim();
             const preview = currentSelection.length > 50 ? `${currentSelection.slice(0, 50)}...` : currentSelection;
@@ -283,6 +348,12 @@ async function detectUserSelection() {
 async function readCurrentPage() {
     if (!currentTab?.id || isReadingPage) return;
 
+    const tabUrl = currentTab.url || "";
+    if (isRestrictedUrl(tabUrl)) {
+        showAlert("Cannot read internal browser or Chrome Web Store pages. Please open an ordinary webpage.", "error");
+        return;
+    }
+
     clearAlert();
     isReadingPage = true;
     btnReadPage.disabled = true;
@@ -290,12 +361,7 @@ async function readCurrentPage() {
     readPageText.textContent = "Reading...";
 
     try {
-        let pageData = null;
-        try {
-            pageData = await chrome.tabs.sendMessage(currentTab.id, { type: "GET_PAGE_CONTENT" });
-        } catch (scriptErr) {
-            throw new Error("Could not connect to page content script. Please refresh the page and try again.");
-        }
+        const pageData = await sendTabMessageWithRecovery(currentTab.id, { type: "GET_PAGE_CONTENT" }, 4500);
 
         if (!pageData || pageData.error) {
             throw new Error(pageData?.error || "Could not extract page text.");
@@ -645,9 +711,9 @@ async function scanOpenGmailEmail() {
     gmailBtnText.textContent = "Extracting Email...";
 
     try {
-        const email = await chrome.tabs.sendMessage(currentTab.id, {
+        const email = await sendTabMessageWithRecovery(currentTab.id, {
             type: "SCAMSHIELD_GET_GMAIL_EMAIL"
-        });
+        }, 4000);
 
         if (!email?.success || !email.message) {
             throw new Error(email?.message || "Please open an individual email in Gmail first.");
@@ -953,7 +1019,464 @@ function setupEventListeners() {
             setTimeout(() => { btnCopyCommandResult.textContent = orig; }, 1500);
         });
     });
+
+    // ==================== WORKSPACE LISTENERS ====================
+    workspaceSelect?.addEventListener("change", async (e) => {
+        if (typeof WorkspaceStore !== "undefined") {
+            await WorkspaceStore.setActiveWorkspaceId(e.target.value);
+            await loadAndRenderWorkspace();
+        }
+    });
+
+    btnNewWorkspace?.addEventListener("click", async () => {
+        const name = prompt("Enter new workspace name (e.g. 'Market Research', 'Security Analysis'):");
+        if (!name || !name.trim()) return;
+        try {
+            const ws = await WorkspaceStore.createWorkspace(name.trim());
+            showWorkspaceAlert(`Created workspace '${ws.name}'!`, false);
+            await loadAndRenderWorkspace();
+        } catch (err) {
+            showWorkspaceAlert("Could not create workspace: " + err.message, true);
+        }
+    });
+
+    btnRenameWorkspace?.addEventListener("click", async () => {
+        if (!activeWorkspaceData) return;
+        const newName = prompt("Rename workspace:", activeWorkspaceData.name);
+        if (!newName || !newName.trim()) return;
+        try {
+            await WorkspaceStore.renameWorkspace(activeWorkspaceData.id, newName.trim());
+            showWorkspaceAlert(`Workspace renamed to '${newName.trim()}'.`, false);
+            await loadAndRenderWorkspace();
+        } catch (err) {
+            showWorkspaceAlert("Could not rename workspace: " + err.message, true);
+        }
+    });
+
+    btnDeleteWorkspace?.addEventListener("click", async () => {
+        if (!activeWorkspaceData) return;
+        if (!confirm(`Delete workspace '${activeWorkspaceData.name}' and all its sources?`)) return;
+        try {
+            await WorkspaceStore.deleteWorkspace(activeWorkspaceData.id);
+            showWorkspaceAlert("Workspace deleted.", false);
+            await loadAndRenderWorkspace();
+        } catch (err) {
+            showWorkspaceAlert(err.message, true);
+        }
+    });
+
+    btnOpenFullWorkspace?.addEventListener("click", () => {
+        if (typeof chrome !== "undefined" && chrome.tabs && chrome.runtime) {
+            chrome.tabs.create({ url: chrome.runtime.getURL("workspace.html") });
+        }
+    });
+
+    btnAddPageToWorkspace?.addEventListener("click", addCurrentPageToWorkspace);
+
+    btnWsAskSources?.addEventListener("click", () => {
+        const q = wsQueryInput?.value.trim();
+        if (!q) {
+            showWorkspaceAlert("Please enter a research question or topic.", true);
+            wsQueryInput?.focus();
+            return;
+        }
+        executeWorkspaceQuery(q);
+    });
+
+    wsQueryInput?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            const q = wsQueryInput.value.trim();
+            if (q) executeWorkspaceQuery(q);
+        }
+    });
+
+    btnWsCompareSources?.addEventListener("click", () => {
+        const focusTopic = wsQueryInput?.value.trim() || "";
+        executeWorkspaceCompare(focusTopic);
+    });
+
+    btnCopyWsResult?.addEventListener("click", () => {
+        const text = wsResultAnswer?.textContent;
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+            const orig = btnCopyWsResult.textContent;
+            btnCopyWsResult.textContent = "Copied!";
+            setTimeout(() => { btnCopyWsResult.textContent = orig; }, 1500);
+        });
+    });
+
+    // Pre-populate workspace state
+    loadAndRenderWorkspace();
+}
+
+// ============================================================
+// PHASE 3: RESEARCH WORKSPACE CONTROLLER
+// ============================================================
+
+let activeWorkspaceData = null;
+
+const workspaceSelect = document.getElementById("workspaceSelect");
+const btnNewWorkspace = document.getElementById("btnNewWorkspace");
+const btnRenameWorkspace = document.getElementById("btnRenameWorkspace");
+const btnDeleteWorkspace = document.getElementById("btnDeleteWorkspace");
+const btnOpenFullWorkspace = document.getElementById("btnOpenFullWorkspace");
+const wsActiveTabPreview = document.getElementById("wsActiveTabPreview");
+const btnAddPageToWorkspace = document.getElementById("btnAddPageToWorkspace");
+const addSourceSpinner = document.getElementById("addSourceSpinner");
+const addSourceBtnText = document.getElementById("addSourceBtnText");
+const workspaceAlert = document.getElementById("workspaceAlert");
+const wsSourceCountBadge = document.getElementById("wsSourceCountBadge");
+const wsSourcesContainer = document.getElementById("wsSourcesContainer");
+const wsSourcesEmptyState = document.getElementById("wsSourcesEmptyState");
+
+const wsQueryInput = document.getElementById("wsQueryInput");
+const btnWsAskSources = document.getElementById("btnWsAskSources");
+const btnWsCompareSources = document.getElementById("btnWsCompareSources");
+const wsQuerySpinner = document.getElementById("wsQuerySpinner");
+const wsQueryBtnText = document.getElementById("wsQueryBtnText");
+const wsLoadingState = document.getElementById("wsLoadingState");
+const wsLoadingTitle = document.getElementById("wsLoadingTitle");
+const wsLoadingSubtitle = document.getElementById("wsLoadingSubtitle");
+const wsResultCard = document.getElementById("wsResultCard");
+const wsResultModeBadge = document.getElementById("wsResultModeBadge");
+const wsResultProviderBadge = document.getElementById("wsResultProviderBadge");
+const wsResultAnswer = document.getElementById("wsResultAnswer");
+const wsCompareBreakdown = document.getElementById("wsCompareBreakdown");
+const wsAgreementsList = document.getElementById("wsAgreementsList");
+const wsDisagreementsList = document.getElementById("wsDisagreementsList");
+const wsUnverifiedList = document.getElementById("wsUnverifiedList");
+const wsCitationsContainer = document.getElementById("wsCitationsContainer");
+const wsCitationsList = document.getElementById("wsCitationsList");
+const wsLimitationsText = document.getElementById("wsLimitationsText");
+const btnCopyWsResult = document.getElementById("btnCopyWsResult");
+
+function showWorkspaceAlert(msg, isError = false) {
+    if (!workspaceAlert) return;
+    workspaceAlert.textContent = msg;
+    workspaceAlert.className = "alert-box show " + (isError ? "error" : "info");
+    setTimeout(() => {
+        workspaceAlert.className = "alert-box";
+    }, 4500);
+}
+
+async function loadAndRenderWorkspace() {
+    if (typeof WorkspaceStore === "undefined") return;
+
+    // Update active tab preview
+    if (wsActiveTabPreview) {
+        if (currentTab && currentTab.title) {
+            let host = "";
+            try { host = new URL(currentTab.url).hostname; } catch (_) {}
+            wsActiveTabPreview.textContent = `${currentTab.title} (${host})`;
+            wsActiveTabPreview.title = currentTab.url || "";
+        } else {
+            wsActiveTabPreview.textContent = "No active tab selected";
+        }
+    }
+
+    try {
+        const workspaces = await WorkspaceStore.getWorkspaces();
+        const activeId = await WorkspaceStore.getActiveWorkspaceId();
+        activeWorkspaceData = workspaces.find(w => w.id === activeId) || workspaces[0];
+
+        if (workspaceSelect) {
+            workspaceSelect.innerHTML = "";
+            workspaces.forEach(ws => {
+                const opt = document.createElement("option");
+                opt.value = ws.id;
+                opt.textContent = `${ws.name} (${ws.sources?.length || 0})`;
+                if (ws.id === activeWorkspaceData.id) opt.selected = true;
+                workspaceSelect.appendChild(opt);
+            });
+        }
+
+        renderWorkspaceSources();
+    } catch (err) {
+        console.error("loadAndRenderWorkspace error:", err);
+        showWorkspaceAlert("Failed to load workspace: " + err.message, true);
+    }
+}
+
+function renderWorkspaceSources() {
+    if (!activeWorkspaceData || !wsSourcesContainer) return;
+
+    const sources = activeWorkspaceData.sources || [];
+    if (wsSourceCountBadge) {
+        wsSourceCountBadge.textContent = `${sources.length} Source${sources.length === 1 ? "" : "s"}`;
+    }
+
+    wsSourcesContainer.innerHTML = "";
+
+    if (sources.length === 0) {
+        if (wsSourcesEmptyState) {
+            wsSourcesContainer.appendChild(wsSourcesEmptyState);
+            wsSourcesEmptyState.style.display = "block";
+        }
+        return;
+    }
+
+    if (wsSourcesEmptyState) wsSourcesEmptyState.style.display = "none";
+
+    sources.forEach(src => {
+        const card = document.createElement("div");
+        card.className = "source-card";
+        const timeStr = src.collected_at ? new Date(src.collected_at).toLocaleDateString() : "Saved";
+
+        card.innerHTML = `
+            <div class="source-card-header">
+                <div class="source-card-title" title="${escapeHtml(src.title)}">${escapeHtml(src.title)}</div>
+            </div>
+            <div class="source-card-meta">
+                <span>🌐 ${escapeHtml(src.hostname || "Webpage")}</span>
+                <span>📅 ${timeStr}</span>
+                <span>📝 ${src.text ? src.text.length.toLocaleString() : 0} chars</span>
+            </div>
+            <div class="source-card-excerpt">${escapeHtml(src.excerpt || "No summary excerpt available.")}</div>
+            <div class="source-card-actions">
+                <a href="${escapeHtml(src.url)}" target="_blank" rel="noopener noreferrer" class="btn-source-link">🔗 Open URL ↗</a>
+                <button class="btn-remove-source" data-src-id="${src.id}" title="Remove source">✕ Remove</button>
+            </div>
+        `;
+
+        card.querySelector(".btn-remove-source")?.addEventListener("click", async () => {
+            try {
+                await WorkspaceStore.removeSource(activeWorkspaceData.id, src.id);
+                showWorkspaceAlert(`Removed '${src.title}' from workspace.`, false);
+                await loadAndRenderWorkspace();
+            } catch (err) {
+                showWorkspaceAlert("Failed to remove source: " + err.message, true);
+            }
+        });
+
+        wsSourcesContainer.appendChild(card);
+    });
+}
+
+async function addCurrentPageToWorkspace() {
+    if (!currentTab || !currentTab.id) {
+        showWorkspaceAlert("No active browser tab found.", true);
+        return;
+    }
+
+    if (isRestrictedUrl(currentTab.url)) {
+        showWorkspaceAlert("Chrome extensions cannot access internal browser pages or the Chrome Web Store. Please open an ordinary webpage.", true);
+        return;
+    }
+
+    if (!activeWorkspaceData) {
+        showWorkspaceAlert("No active workspace selected.", true);
+        return;
+    }
+
+    addSourceSpinner.style.display = "inline-block";
+    addSourceBtnText.textContent = "Extracting...";
+    btnAddPageToWorkspace.disabled = true;
+
+    try {
+        let pageDataToSave = currentPageData;
+        if (!pageDataToSave || pageDataToSave.url !== currentTab.url) {
+            // Extract from active tab
+            pageDataToSave = await sendTabMessageWithRecovery(currentTab.id, { action: "EXTRACT_PAGE_CONTENT" });
+        }
+
+        if (!pageDataToSave || (!pageDataToSave.content && !pageDataToSave.paragraphs?.length && !pageDataToSave.title)) {
+            throw new Error("Could not extract meaningful content from this page.");
+        }
+
+        const sourceInput = {
+            title: pageDataToSave.title || currentTab.title,
+            url: pageDataToSave.url || currentTab.url,
+            hostname: pageDataToSave.hostname || (currentTab.url ? new URL(currentTab.url).hostname : ""),
+            text: pageDataToSave.content || (pageDataToSave.paragraphs || []).join("\n\n"),
+            excerpt: pageDataToSave.description || "",
+            headings: pageDataToSave.headings || []
+        };
+
+        const result = await WorkspaceStore.addSource(activeWorkspaceData.id, sourceInput);
+        if (result.isDuplicate) {
+            showWorkspaceAlert(`⚠️ Notice: This page is already saved in '${activeWorkspaceData.name}'.`, true);
+        } else {
+            showWorkspaceAlert(`✓ Added '${result.source.title}' to '${activeWorkspaceData.name}'!`, false);
+            await loadAndRenderWorkspace();
+        }
+    } catch (err) {
+        console.error("addCurrentPageToWorkspace error:", err);
+        showWorkspaceAlert("Failed to add page: " + err.message, true);
+    } finally {
+        addSourceSpinner.style.display = "none";
+        addSourceBtnText.textContent = "➕ Add Page";
+        btnAddPageToWorkspace.disabled = false;
+    }
+}
+
+async function executeWorkspaceQuery(query) {
+    if (!activeWorkspaceData || !activeWorkspaceData.sources || activeWorkspaceData.sources.length === 0) {
+        showWorkspaceAlert("Please add at least one page to this workspace before querying.", true);
+        return;
+    }
+
+    setWsLoading(true, "Synthesizing Across Sources...", "Lexical retrieval and citation extraction");
+
+    try {
+        const res = await fetch(`${BACKEND_URL}/workspace/query`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                query: query,
+                workspace_name: activeWorkspaceData.name,
+                sources: activeWorkspaceData.sources.map(s => ({
+                    id: s.id,
+                    title: s.title,
+                    url: s.url,
+                    hostname: s.hostname,
+                    collected_at: s.collected_at,
+                    text: s.text,
+                    excerpt: s.excerpt
+                }))
+            })
+        });
+
+        if (!res.ok) {
+            throw new Error(`Server returned error ${res.status}: ${await res.text()}`);
+        }
+
+        const data = await res.json();
+        renderWorkspaceSynthesis(data, "query");
+    } catch (err) {
+        renderWorkspaceError("Cross-source query failed: " + err.message);
+    } finally {
+        setWsLoading(false);
+    }
+}
+
+async function executeWorkspaceCompare(focusTopic) {
+    if (!activeWorkspaceData || !activeWorkspaceData.sources || activeWorkspaceData.sources.length < 2) {
+        showWorkspaceAlert("Source comparison requires at least 2 saved pages in this workspace. Please add more pages first.", true);
+        return;
+    }
+
+    setWsLoading(true, "Comparing Saved Sources...", "Analyzing agreement, differences, and unverified claims");
+
+    try {
+        const res = await fetch(`${BACKEND_URL}/workspace/compare`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                workspace_name: activeWorkspaceData.name,
+                focus_topic: focusTopic,
+                sources: activeWorkspaceData.sources.map(s => ({
+                    id: s.id,
+                    title: s.title,
+                    url: s.url,
+                    hostname: s.hostname,
+                    collected_at: s.collected_at,
+                    text: s.text,
+                    excerpt: s.excerpt
+                }))
+            })
+        });
+
+        if (!res.ok) {
+            throw new Error(`Server returned error ${res.status}: ${await res.text()}`);
+        }
+
+        const data = await res.json();
+        renderWorkspaceSynthesis(data, "compare");
+    } catch (err) {
+        renderWorkspaceError("Source comparison failed: " + err.message);
+    } finally {
+        setWsLoading(false);
+    }
+}
+
+function setWsLoading(isLoading, title = "", subtitle = "") {
+    if (isLoading) {
+        wsResultCard.style.display = "none";
+        wsLoadingState.style.display = "flex";
+        wsLoadingTitle.textContent = title;
+        wsLoadingSubtitle.textContent = subtitle;
+        btnWsAskSources.disabled = true;
+        btnWsCompareSources.disabled = true;
+    } else {
+        wsLoadingState.style.display = "none";
+        btnWsAskSources.disabled = false;
+        btnWsCompareSources.disabled = false;
+    }
+}
+
+function renderWorkspaceSynthesis(data, mode) {
+    wsLoadingState.style.display = "none";
+    wsResultCard.style.display = "flex";
+
+    if (mode === "compare") {
+        wsResultModeBadge.textContent = "⚖️ Source Comparison";
+        wsResultProviderBadge.textContent = data.provider || "Grounded LLM";
+        wsResultAnswer.textContent = data.comparison_summary || "Comparison completed.";
+
+        wsCompareBreakdown.style.display = "flex";
+        renderList(wsAgreementsList, data.agreements, "No specific consensus points detected.");
+        renderList(wsDisagreementsList, data.disagreements, "No direct contradictions found.");
+        renderList(wsUnverifiedList, data.unverified_claims, "All key claims have source coverage.");
+    } else {
+        wsResultModeBadge.textContent = "🔍 Research Synthesis";
+        wsResultProviderBadge.textContent = data.provider || "Grounded LLM";
+        wsResultAnswer.textContent = data.answer || "No response generated.";
+        wsCompareBreakdown.style.display = "none";
+    }
+
+    // Render citations
+    wsCitationsList.innerHTML = "";
+    const citations = data.citations || [];
+    if (citations.length > 0) {
+        wsCitationsContainer.style.display = "flex";
+        citations.forEach(c => {
+            const card = document.createElement("div");
+            card.className = "evidence-citation-card";
+            card.innerHTML = `
+                <div class="citation-title-row">
+                    <span class="citation-title">${escapeHtml(c.source_title || "Source")}</span>
+                    <a href="${escapeHtml(c.url)}" target="_blank" rel="noopener noreferrer" style="color: var(--cyan); text-decoration: none; font-size: 10px;">Visit Page ↗</a>
+                </div>
+                <div class="citation-quote">"${escapeHtml(c.quote)}"</div>
+            `;
+            wsCitationsList.appendChild(card);
+        });
+    } else {
+        wsCitationsContainer.style.display = "none";
+    }
+
+    wsLimitationsText.textContent = data.limitations || "Grounded in bounded excerpts from saved workspace pages.";
+}
+
+function renderWorkspaceError(msg) {
+    wsLoadingState.style.display = "none";
+    wsResultCard.style.display = "flex";
+    wsResultModeBadge.textContent = "⚠️ Error";
+    wsResultProviderBadge.textContent = "Local";
+    wsResultAnswer.textContent = msg;
+    wsCompareBreakdown.style.display = "none";
+    wsCitationsContainer.style.display = "none";
+    wsLimitationsText.textContent = "Verify backend is running on http://127.0.0.1:8000.";
+}
+
+function renderList(container, items, emptyMessage) {
+    container.innerHTML = "";
+    if (!items || items.length === 0) {
+        const div = document.createElement("div");
+        div.className = "finding-item";
+        div.textContent = emptyMessage;
+        container.appendChild(div);
+        return;
+    }
+    items.forEach(text => {
+        const div = document.createElement("div");
+        div.className = "finding-item";
+        div.innerHTML = `<span class="finding-bullet">&bull;</span><span>${escapeHtml(text)}</span>`;
+        container.appendChild(div);
+    });
 }
 
 // Start on DOM ready
 document.addEventListener("DOMContentLoaded", initialize);
+
