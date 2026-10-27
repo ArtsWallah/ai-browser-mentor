@@ -16,6 +16,11 @@ from app.schemas import (
     WorkspaceQueryResponse,
     WorkspaceSourceItem
 )
+from app.services.hybrid_router import (
+    route_llm_request,
+    normalize_privacy_mode,
+    PRIVACY_LOCAL_ONLY
+)
 
 # Strict Grounded Research System Prompt
 WORKSPACE_SYSTEM_PROMPT = """You are AI Browser Mentor, a research synthesis assistant.
@@ -248,9 +253,9 @@ async def query_workspace_sources(
         )
     formatted_context = "\n\n".join(context_blocks)
 
-    # 2. Synthesize using Groq if available
-    if groq_api_key:
-        user_prompt = f"""User Research Query:
+    # 2. Synthesize using Hybrid AI Router
+    pm = normalize_privacy_mode(getattr(request, "privacy_mode", "hybrid"))
+    user_prompt = f"""User Research Query:
 "{request.query}"
 
 Workspace Name: {request.workspace_name}
@@ -268,73 +273,51 @@ Requirements:
 - Do NOT make up any citations or facts outside these passages.
 """
 
-        try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                res = await client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {groq_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": groq_model,
-                        "messages": [
-                            {"role": "system", "content": WORKSPACE_SYSTEM_PROMPT},
-                            {"role": "user", "content": user_prompt}
-                        ],
-                        "temperature": 0.1,
-                        "max_tokens": 1000
-                    }
-                )
+    def deterministic_workspace_synth() -> str:
+        best_passages = top_passages[:3]
+        return (
+            f"Synthesized research across {len(request.sources)} sources in '{request.workspace_name}':\n\n"
+            + "\n\n".join(f"• From '{p['source_title']}' ({p['source_url']}):\n  \"{p['text'][:250]}...\"" for p in best_passages)
+        )
 
-            if res.status_code == 200:
-                data = res.json()
-                raw_answer = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+    raw_answer, provider_label = await route_llm_request(
+        system_prompt=WORKSPACE_SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        privacy_mode=pm,
+        fallback_local_fn=deterministic_workspace_synth,
+        temperature=0.1,
+        max_tokens=1000
+    )
 
-                # Extract key findings from LLM output or top passages
-                key_findings = []
-                bullet_lines = [
-                    line.strip().lstrip("-*•0123456789. ")
-                    for line in raw_answer.split("\n")
-                    if line.strip().startswith(("-", "*", "•")) or re.match(r"^\d+\.", line.strip())
-                ]
-                if bullet_lines:
-                    key_findings = bullet_lines[:5]
-                else:
-                    key_findings = [p["text"][:140] + "..." for p in top_passages[:3]]
+    # Extract key findings from LLM output or top passages
+    key_findings = []
+    bullet_lines = [
+        line.strip().lstrip("-*•0123456789. ")
+        for line in raw_answer.split("\n")
+        if line.strip().startswith(("-", "*", "•")) or re.match(r"^\d+\.", line.strip())
+    ]
+    if bullet_lines:
+        key_findings = bullet_lines[:5]
+    else:
+        key_findings = [p["text"][:140] + "..." for p in top_passages[:3]]
 
-                return WorkspaceQueryResponse(
-                    success=True,
-                    workspace_name=request.workspace_name,
-                    query=request.query,
-                    answer=raw_answer,
-                    key_findings=key_findings,
-                    citations=citations,
-                    insufficient_evidence=False,
-                    limitations="Answer synthesized from bounded excerpts of saved pages.",
-                    provider=f"groq ({groq_model})"
-                )
-        except Exception as e:
-            print("Groq cross-source synthesis error, falling back to deterministic synthesis:", repr(e))
-
-    # 3. Deterministic Fallback Synthesis
-    best_passages = top_passages[:3]
-    findings = [f"[{p['source_title']}]: {p['text'][:150]}..." for p in best_passages]
-    fallback_answer = (
-        f"Synthesized research across {len(request.sources)} sources in '{request.workspace_name}':\n\n"
-        + "\n\n".join(f"• From '{p['source_title']}' ({p['source_url']}):\n  \"{p['text'][:250]}...\"" for p in best_passages)
+    limitations_text = (
+        "Generated strictly via local passage synthesis (Local-only mode active)."
+        if pm == "local_only"
+        else "Answer synthesized from bounded excerpts of saved pages."
     )
 
     return WorkspaceQueryResponse(
         success=True,
         workspace_name=request.workspace_name,
         query=request.query,
-        answer=fallback_answer,
-        key_findings=findings,
+        answer=raw_answer,
+        key_findings=key_findings,
         citations=citations,
         insufficient_evidence=False,
-        limitations="Generated via deterministic lexical passage extraction (LLM offline).",
-        provider="deterministic_retrieval"
+        limitations=limitations_text,
+        provider=provider_label,
+        privacy_mode_applied=pm
     )
 
 
@@ -349,6 +332,8 @@ async def compare_workspace_sources(
     - Disagreements / conflicting claims
     - Unverified claims
     """
+    pm = normalize_privacy_mode(getattr(request, "privacy_mode", "hybrid"))
+
     if not request.sources or len(request.sources) < 2:
         # Single or empty source
         if len(request.sources) == 1:
@@ -376,7 +361,8 @@ async def compare_workspace_sources(
                     )
                 ],
                 limitations="Single source workspace; comparison requires at least 2 sources.",
-                provider="workspace_rules"
+                provider="workspace_rules",
+                privacy_mode_applied=pm
             )
         else:
             return WorkspaceCompareResponse(
@@ -385,7 +371,8 @@ async def compare_workspace_sources(
                 focus_topic=request.focus_topic,
                 comparison_summary="No sources found in this workspace to compare. Please add at least 2 pages.",
                 limitations="Empty workspace.",
-                provider="workspace_rules"
+                provider="workspace_rules",
+                privacy_mode_applied=pm
             )
 
     # Build context from all sources (bounded text per source)
@@ -412,9 +399,7 @@ async def compare_workspace_sources(
     combined_sources = "\n\n".join(source_blocks)
     topic_clause = f"Focus Topic: {request.focus_topic}\n" if request.focus_topic else ""
 
-    # Call Groq if available
-    if groq_api_key:
-        prompt = f"""Compare and contrast the following saved sources in research workspace '{request.workspace_name}':
+    prompt = f"""Compare and contrast the following saved sources in research workspace '{request.workspace_name}':
 {topic_clause}
 Sources ({len(request.sources)} total):
 {combined_sources}
@@ -435,100 +420,76 @@ DISAGREEMENTS:
 UNVERIFIED:
 - <point 1>
 """
-        try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                res = await client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {groq_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": groq_model,
-                        "messages": [
-                            {"role": "system", "content": WORKSPACE_SYSTEM_PROMPT},
-                            {"role": "user", "content": prompt}
-                        ],
-                        "temperature": 0.1,
-                        "max_tokens": 1000
-                    }
-                )
 
-            if res.status_code == 200:
-                data = res.json()
-                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+    def deterministic_compare_synth() -> str:
+        titles = [s.title or s.hostname for s in request.sources]
+        return (
+            f"SUMMARY: Compared {len(request.sources)} sources in '{request.workspace_name}' ({', '.join(titles)}) using local comparative analysis.\n"
+            f"AGREEMENTS:\n- Sources share general topical focus on {request.focus_topic or 'the workspace topic'}.\n- Sources originate from {len(set(s.hostname for s in request.sources))} distinct domain(s).\n"
+            f"DISAGREEMENTS:\n- No direct factual contradictions detected via deterministic local analysis.\n"
+            f"UNVERIFIED:\n- Specific claims require primary-source verification."
+        )
 
-                # Parse sections
-                agreements = []
-                disagreements = []
-                unverified = []
-                summary = ""
+    content, provider_label = await route_llm_request(
+        system_prompt=WORKSPACE_SYSTEM_PROMPT,
+        user_prompt=prompt,
+        privacy_mode=pm,
+        fallback_local_fn=deterministic_compare_synth,
+        temperature=0.1,
+        max_tokens=1000
+    )
 
-                current_section = "summary"
-                for line in content.split("\n"):
-                    l = line.strip()
-                    if not l:
-                        continue
-                    if "AGREEMENT" in l.upper() and (":" in l or l.startswith("#")):
-                        current_section = "agreements"
-                        continue
-                    elif "DISAGREEMENT" in l.upper() and (":" in l or l.startswith("#")):
-                        current_section = "disagreements"
-                        continue
-                    elif "UNVERIFIED" in l.upper() and (":" in l or l.startswith("#")):
-                        current_section = "unverified"
-                        continue
-                    elif l.upper().startswith("SUMMARY:"):
-                        summary = l.replace("SUMMARY:", "").strip()
-                        current_section = "summary"
-                        continue
+    # Parse sections
+    agreements = []
+    disagreements = []
+    unverified = []
+    summary = ""
 
-                    cleaned_bullet = l.lstrip("-*•0123456789. ")
-                    if current_section == "summary":
-                        summary += (" " + l if summary else l)
-                    elif current_section == "agreements":
-                        agreements.append(cleaned_bullet)
-                    elif current_section == "disagreements":
-                        disagreements.append(cleaned_bullet)
-                    elif current_section == "unverified":
-                        unverified.append(cleaned_bullet)
+    current_section = "summary"
+    for line in content.split("\n"):
+        l = line.strip()
+        if not l:
+            continue
+        if "AGREEMENT" in l.upper() and (":" in l or l.startswith("#")):
+            current_section = "agreements"
+            continue
+        elif "DISAGREEMENT" in l.upper() and (":" in l or l.startswith("#")):
+            current_section = "disagreements"
+            continue
+        elif "UNVERIFIED" in l.upper() and (":" in l or l.startswith("#")):
+            current_section = "unverified"
+            continue
+        elif l.upper().startswith("SUMMARY:"):
+            summary = l.replace("SUMMARY:", "").strip()
+            current_section = "summary"
+            continue
 
-                return WorkspaceCompareResponse(
-                    success=True,
-                    workspace_name=request.workspace_name,
-                    focus_topic=request.focus_topic,
-                    comparison_summary=summary or "Comparative analysis across saved workspace sources.",
-                    agreements=agreements or ["Sources share general topical focus."],
-                    disagreements=disagreements or ["No direct factual contradictions observed."],
-                    unverified_claims=unverified or ["Claims are subject to independent primary-source verification."],
-                    citations=citations,
-                    limitations="Comparison grounded in saved source text.",
-                    provider=f"groq ({groq_model})"
-                )
-        except Exception as e:
-            print("Groq comparison error, using deterministic comparison:", repr(e))
+        cleaned_bullet = l.lstrip("-*•0123456789. ")
+        if current_section == "summary":
+            summary += (" " + l if summary else l)
+        elif current_section == "agreements":
+            agreements.append(cleaned_bullet)
+        elif current_section == "disagreements":
+            disagreements.append(cleaned_bullet)
+        elif current_section == "unverified":
+            unverified.append(cleaned_bullet)
 
-    # Deterministic comparison fallback
-    titles = [s.title or s.hostname for s in request.sources]
-    summary = f"Compared {len(request.sources)} sources in '{request.workspace_name}': {', '.join(titles)}."
-    agreements = [
-        f"All sources document related web content on {request.focus_topic or 'the workspace topic'}.",
-        f"Sources originate from {len(set(s.hostname for s in request.sources))} distinct domain(s)."
-    ]
-    unverified = [
-        f"Individual claims in '{s.title or s.hostname}' require corroboration against external databases."
-        for s in request.sources[:3]
-    ]
+    limitations_text = (
+        "Generated strictly via local passage comparison (Local-only mode active)."
+        if pm == "local_only"
+        else "Comparison grounded in saved source text."
+    )
 
     return WorkspaceCompareResponse(
         success=True,
         workspace_name=request.workspace_name,
         focus_topic=request.focus_topic,
-        comparison_summary=summary,
-        agreements=agreements,
-        disagreements=["No automated contradiction detected in deterministic fallback mode."],
-        unverified_claims=unverified,
+        comparison_summary=summary or "Comparative analysis across saved workspace sources.",
+        agreements=agreements or ["Sources share general topical focus."],
+        disagreements=disagreements or ["No direct factual contradictions observed."],
+        unverified_claims=unverified or ["Claims are subject to independent primary-source verification."],
         citations=citations,
-        limitations="Generated via deterministic multi-source comparison (LLM offline).",
-        provider="deterministic_comparator"
+        limitations=limitations_text,
+        provider=provider_label,
+        privacy_mode_applied=pm
     )

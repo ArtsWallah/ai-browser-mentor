@@ -2511,9 +2511,10 @@ from app.schemas import (
 @app.post("/assistant/command", response_model=CommandExecutionResponse)
 async def command_execute_endpoint(request: CommandExecutionRequest):
     """
-    Phase 2 AI Command Center endpoint:
+    Phase 2 & 4 AI Command Center endpoint:
     Accepts natural-language user instruction, gathers page context,
-    invokes appropriate registered tool, and returns a verified, structured response.
+    invokes appropriate registered tool, and returns a verified, structured response
+    respecting user privacy settings.
     """
     page = get_page(request.page_id) if request.page_id else None
     return await execute_command(
@@ -2523,6 +2524,7 @@ async def command_execute_endpoint(request: CommandExecutionRequest):
         intent_override=request.intent,
         page_url=request.page_url,
         page_title=request.page_title,
+        privacy_mode=request.privacy_mode,
         groq_api_key=GROQ_API_KEY,
         groq_model=GROQ_MODEL
     )
@@ -2544,6 +2546,7 @@ async def assistant_query(request: AssistantQueryRequest):
         page=page,
         selection_text=request.selection_text,
         mode=request.mode,
+        privacy_mode=request.privacy_mode,
         groq_api_key=GROQ_API_KEY,
         groq_model=GROQ_MODEL
     )
@@ -2587,6 +2590,7 @@ async def page_summary_endpoint(request: PageSummaryRequest):
         query="Summarize this page with key points",
         page=page,
         mode="summary",
+        privacy_mode="hybrid",
         groq_api_key=GROQ_API_KEY,
         groq_model=GROQ_MODEL
     )
@@ -2611,9 +2615,9 @@ from app.services.workspace_service import (
 @app.post("/workspace/query", response_model=WorkspaceQueryResponse)
 async def workspace_query_endpoint(request: WorkspaceQueryRequest):
     """
-    Phase 3: Persistent Multi-Tab Research Workspace Query.
+    Phase 3 & 4: Persistent Multi-Tab Research Workspace Query.
     Executes cross-source passage retrieval and synthesizes answers
-    with source titles, URLs, and supporting quotes.
+    with source titles, URLs, and supporting quotes under active privacy policy.
     """
     return await query_workspace_sources(
         request=request,
@@ -2625,13 +2629,32 @@ async def workspace_query_endpoint(request: WorkspaceQueryRequest):
 @app.post("/workspace/compare", response_model=WorkspaceCompareResponse)
 async def workspace_compare_endpoint(request: WorkspaceCompareRequest):
     """
-    Phase 3: Compare saved sources in a research workspace.
-    Identifies agreements, disagreements, and unverified claims.
+    Phase 3 & 4: Compare saved sources in a research workspace.
+    Identifies agreements, disagreements, and unverified claims under active privacy policy.
     """
     return await compare_workspace_sources(
         request=request,
         groq_api_key=GROQ_API_KEY,
         groq_model=GROQ_MODEL
     )
+
+
+# ============================================================
+# PHASE 4: HYBRID AI ENGINE & MODEL REGISTRY ENDPOINTS
+# ============================================================
+
+from app.schemas import ModelRegistryResponse
+from app.services.hybrid_router import get_active_model_registry
+
+
+@app.get("/models", response_model=ModelRegistryResponse)
+@app.get("/models/status", response_model=ModelRegistryResponse)
+async def get_models_endpoint(privacy_mode: str = "hybrid"):
+    """
+    Phase 4: Inspect active runtime model availability and privacy configuration.
+    Returns real, verified local and remote provider statuses without hypothetical listings.
+    """
+    return await get_active_model_registry(current_privacy_mode=privacy_mode)
+
 
 

@@ -14,10 +14,14 @@ let isReadingPage = false;
 let isExecutingCommand = false;
 let allScannedLinks = [];
 let currentLinkFilter = "all";
+let currentPrivacyMode = "hybrid";
 
 // DOM Elements: Header & Status
 const connectionDot = document.getElementById("connectionDot");
 const connectionText = document.getElementById("connectionText");
+const privacyModeSelect = document.getElementById("privacyModeSelect");
+const modelStatusNotice = document.getElementById("modelStatusNotice");
+const activeProviderBadge = document.getElementById("activeProviderBadge");
 const activePageTitle = document.getElementById("activePageTitle");
 const activePageDomain = document.getElementById("activePageDomain");
 const pageStatusBadge = document.getElementById("pageStatusBadge");
@@ -228,14 +232,81 @@ function escapeHtml(str) {
 
 
 // ============================================================
-// INITIALIZATION
+// INITIALIZATION & PRIVACY MANAGEMENT
 // ============================================================
 
 async function initialize() {
+    await loadPrivacyMode();
     checkBackendHealth();
     await resolveActiveTab();
     setupEventListeners();
     showCommandEmptyState();
+}
+
+async function loadPrivacyMode() {
+    try {
+        if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+            const data = await chrome.storage.local.get(["ai_mentor_privacy_mode"]);
+            if (data && data.ai_mentor_privacy_mode) {
+                currentPrivacyMode = data.ai_mentor_privacy_mode;
+            }
+        }
+    } catch (e) {
+        console.warn("Storage get privacy mode:", e);
+    }
+    if (privacyModeSelect) {
+        privacyModeSelect.value = currentPrivacyMode;
+    }
+    updatePrivacyModeUI();
+    refreshModelRegistry();
+}
+
+async function savePrivacyMode(mode) {
+    currentPrivacyMode = mode;
+    try {
+        if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+            await chrome.storage.local.set({ "ai_mentor_privacy_mode": mode });
+        }
+    } catch (e) {
+        console.warn("Storage set privacy mode:", e);
+    }
+    updatePrivacyModeUI();
+    refreshModelRegistry();
+}
+
+function updatePrivacyModeUI() {
+    if (!modelStatusNotice) return;
+    if (currentPrivacyMode === "local_only") {
+        modelStatusNotice.innerHTML = "Privacy: <strong>🔒 Local Only</strong> &bull; Remote LLM calls blocked";
+        if (activeProviderBadge) activeProviderBadge.innerHTML = "&#128274; Local Engines Only";
+    } else if (currentPrivacyMode === "cloud") {
+        modelStatusNotice.innerHTML = "Privacy: <strong>☁️ Cloud</strong> &bull; Remote LLM execution";
+        if (activeProviderBadge) activeProviderBadge.innerHTML = "&#9729;&#65039; Cloud Enabled";
+    } else {
+        modelStatusNotice.innerHTML = "Privacy: <strong>⚡ Hybrid</strong> &bull; Local heuristics + cloud synthesis";
+        if (activeProviderBadge) activeProviderBadge.innerHTML = "&#9889; Hybrid Routing";
+    }
+}
+
+async function refreshModelRegistry() {
+    try {
+        const res = await fetch(`${BACKEND_URL}/models?privacy_mode=${currentPrivacyMode}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.models && activeProviderBadge) {
+            const readyLocal = data.models.filter(m => m.is_local && m.is_available).length;
+            const cloudReady = data.cloud_configured;
+            if (currentPrivacyMode === "local_only") {
+                activeProviderBadge.innerHTML = `&#128274; ${readyLocal} Local Engine(s) Ready`;
+            } else if (currentPrivacyMode === "cloud") {
+                activeProviderBadge.innerHTML = cloudReady ? "&#9729;&#65039; Cloud Groq Ready" : "&#9888;&#65039; Cloud Unconfigured";
+            } else {
+                activeProviderBadge.innerHTML = `&#9889; ${readyLocal} Local + ${cloudReady ? "Cloud" : "Local Fallback"}`;
+            }
+        }
+    } catch (e) {
+        // Backend offline
+    }
 }
 
 async function checkBackendHealth() {
@@ -254,6 +325,7 @@ async function checkBackendHealth() {
             } else {
                 connectionText.textContent = "Connected";
             }
+            refreshModelRegistry();
         } else {
             connectionDot.className = "connection-dot error";
             connectionText.textContent = "Degraded";
@@ -529,7 +601,8 @@ async function executeCommand(overrideInstruction = "", intentOverride = "auto")
             page_id: currentPageId || "",
             selection_text: currentSelection || "",
             page_url: currentTab?.url || "",
-            page_title: currentTab?.title || ""
+            page_title: currentTab?.title || "",
+            privacy_mode: currentPrivacyMode
         };
 
         const res = await fetch(`${BACKEND_URL}/command/execute`, {
@@ -564,7 +637,8 @@ function renderCommandResult(data) {
     // 1. Tool and Provider Badges
     const toolName = (data.tool_name || data.intent || "assistant").replace(/_/g, " ").toUpperCase();
     if (resultToolBadge) resultToolBadge.innerHTML = `&#9889; ${escapeHtml(toolName)}`;
-    if (resultProviderBadge) resultProviderBadge.textContent = data.provider || "System";
+    const appliedMode = data.privacy_mode_applied || currentPrivacyMode;
+    if (resultProviderBadge) resultProviderBadge.textContent = `${data.provider || "System"} • ${appliedMode}`;
 
     // 2. Action Summary
     if (resultActionSummary) {
@@ -919,6 +993,11 @@ async function checkCustomUrl() {
 // ============================================================
 
 function setupEventListeners() {
+    // Privacy Mode Selector
+    privacyModeSelect?.addEventListener("change", (e) => {
+        savePrivacyMode(e.target.value);
+    });
+
     // Tab switching
     navTabs.forEach(tab => {
         tab.addEventListener("click", () => {
@@ -1325,6 +1404,7 @@ async function executeWorkspaceQuery(query) {
             body: JSON.stringify({
                 query: query,
                 workspace_name: activeWorkspaceData.name,
+                privacy_mode: currentPrivacyMode,
                 sources: activeWorkspaceData.sources.map(s => ({
                     id: s.id,
                     title: s.title,
@@ -1365,6 +1445,7 @@ async function executeWorkspaceCompare(focusTopic) {
             body: JSON.stringify({
                 workspace_name: activeWorkspaceData.name,
                 focus_topic: focusTopic,
+                privacy_mode: currentPrivacyMode,
                 sources: activeWorkspaceData.sources.map(s => ({
                     id: s.id,
                     title: s.title,
@@ -1409,9 +1490,10 @@ function renderWorkspaceSynthesis(data, mode) {
     wsLoadingState.style.display = "none";
     wsResultCard.style.display = "flex";
 
+    const appliedMode = data.privacy_mode_applied || currentPrivacyMode;
     if (mode === "compare") {
         wsResultModeBadge.textContent = "⚖️ Source Comparison";
-        wsResultProviderBadge.textContent = data.provider || "Grounded LLM";
+        wsResultProviderBadge.textContent = `${data.provider || "Grounded LLM"} • ${appliedMode}`;
         wsResultAnswer.textContent = data.comparison_summary || "Comparison completed.";
 
         wsCompareBreakdown.style.display = "flex";
@@ -1420,7 +1502,7 @@ function renderWorkspaceSynthesis(data, mode) {
         renderList(wsUnverifiedList, data.unverified_claims, "All key claims have source coverage.");
     } else {
         wsResultModeBadge.textContent = "🔍 Research Synthesis";
-        wsResultProviderBadge.textContent = data.provider || "Grounded LLM";
+        wsResultProviderBadge.textContent = `${data.provider || "Grounded LLM"} • ${appliedMode}`;
         wsResultAnswer.textContent = data.answer || "No response generated.";
         wsCompareBreakdown.style.display = "none";
     }
