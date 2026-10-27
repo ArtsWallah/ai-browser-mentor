@@ -2,1005 +2,1052 @@
 <html lang="en">
 
 <head>
-
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Browser Mentor</title>
-
     <style>
-
-:root {
-  color-scheme: dark;
-  --bg: #090e1b;
-  --surface: #111a2d;
-  --surface-raised: #17233a;
-  --surface-hover: #202e49;
-  --border: rgba(161, 177, 213, 0.15);
-  --text: #f3f6ff;
-  --muted: #97a6c3;
-  --primary: #8274ff;
-  --primary-hover: #958aff;
-  --cyan: #62d9f5;
-  --success: #50dfb0;
-  --warning: #ffc86b;
-  --danger: #ff788e;
-  --radius: 18px;
-  --shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  min-width: 360px;
-  background: var(--bg);
-}
-
-body {
-  margin: 0;
-  width: 400px;
-  max-width: 100%;
-  min-height: 400px;
-  background:
-    radial-gradient(ellipse at 85% 0%, rgba(99, 81, 230, 0.15), transparent 36%),
-    var(--bg);
-  color: var(--text);
-  font-family: Inter, "Segoe UI", system-ui, sans-serif;
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.container {
-  width: 100%;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 4px 0 18px;
-  border-bottom: 1px solid var(--border);
-}
-
-.logo {
-  width: 46px;
-  height: 46px;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 15px;
-  color: white;
-  font-size: 15px;
-  font-weight: 850;
-  letter-spacing: -1px;
-  background: linear-gradient(140deg, #9182ff, #5c4ad6 65%, #3e9fd8);
-  box-shadow: 0 6px 22px rgba(113, 94, 255, 0.25);
-}
-
-.title-area {
-  flex: 1;
-  min-width: 0;
-}
-
-.title {
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.35;
-  font-weight: 750;
-  letter-spacing: -0.5px;
-  color: var(--text);
-}
-
-.subtitle {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.connection {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  padding: 6px 9px;
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  color: var(--muted);
-  font-size: 10px;
-  background: rgba(255, 255, 255, 0.025);
-}
-
-.connection-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--warning);
-  box-shadow: 0 0 10px rgba(255, 200, 107, 0.25);
-}
-
-.hero,
-.ai-card,
-.success-card,
-#securityResult,
-.tool,
-.stat,
-#scamShieldEmailResults {
-  background: linear-gradient(
-    145deg,
-    rgba(23, 35, 58, 0.96),
-    rgba(15, 24, 42, 0.98)
-  );
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-
-.hero {
-  position: relative;
-  overflow: hidden;
-  padding: 19px;
-}
-
-.hero::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 18px;
-  right: 18px;
-  height: 2px;
-  border-radius: 10px;
-  background: linear-gradient(90deg, var(--primary), var(--cyan), transparent);
-  opacity: 0.85;
-}
-
-.hero-icon {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  margin-bottom: 13px;
-  border-radius: 13px;
-  color: #c5bcff;
-  font-weight: 800;
-  font-size: 11px;
-  background: rgba(130, 116, 255, 0.13);
-  border: 1px solid rgba(130, 116, 255, 0.22);
-}
-
-.hero-title {
-  margin: 0 0 7px;
-  color: var(--text);
-  font-size: 15px;
-  line-height: 1.4;
-  font-weight: 750;
-  letter-spacing: -0.3px;
-}
-
-.hero-description {
-  margin: 0 0 16px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-button {
-  width: 100%;
-  min-height: 42px;
-  padding: 11px 15px;
-  border: 1px solid transparent;
-  border-radius: 12px;
-  color: white;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  background: linear-gradient(110deg, #7665f5, #6355d8);
-  box-shadow: 0 5px 18px rgba(105, 87, 232, 0.19);
-  transition:
-    transform 160ms ease,
-    filter 160ms ease,
-    box-shadow 160ms ease;
-}
-
-button:hover {
-  filter: brightness(1.12);
-  transform: translateY(-1px);
-  box-shadow: 0 8px 23px rgba(105, 87, 232, 0.27);
-}
-
-button:active {
-  transform: translateY(0);
-}
-
-button:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid var(--cyan);
-  outline-offset: 3px;
-}
-
-button:disabled {
-  cursor: wait;
-  opacity: 0.6;
-  transform: none;
-}
-
-#scamShieldEmailSection {
-  border-color: rgba(80, 223, 176, 0.18);
-}
-
-#scamShieldEmailSection::before {
-  background: linear-gradient(90deg, var(--success), var(--cyan), transparent);
-}
-
-#scamShieldEmailButton {
-  background: linear-gradient(110deg, #159d86, #177e91);
-  box-shadow: 0 5px 18px rgba(24, 171, 150, 0.16);
-}
-
-#scamShieldEmailButton:hover {
-  box-shadow: 0 8px 23px rgba(24, 171, 150, 0.25);
-}
-
-#scamShieldEmailStatus {
-  color: var(--muted) !important;
-  font-size: 11px !important;
-  overflow-wrap: anywhere;
-}
-
-#scamShieldEmailResults {
-  padding: 14px;
-  color: var(--text);
-  border-color: rgba(80, 223, 176, 0.16);
-  overflow-wrap: anywhere;
-}
-
-#scamShieldEmailResults h3 {
-  margin: 0 0 12px;
-  font-size: 14px;
-}
-
-#scamShieldEmailResults .verdict-card {
-  margin: 10px 0 14px;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 13px;
-  background: rgba(255, 255, 255, 0.035);
-}
-
-#scamShieldEmailResults .verdict-title {
-  margin-bottom: 6px;
-  color: var(--text);
-  font-size: 16px;
-  font-weight: 800;
-}
-
-#scamShieldEmailResults .verdict-detail,
-#scamShieldEmailResults p {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.7;
-}
-
-#scamShieldEmailResults .tactic-row {
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-  overflow-wrap: anywhere;
-}
-
-#scamShieldEmailResults .tactic-row:last-child {
-  border-bottom: 0;
-}
-
-#scamShieldEmailResults .tactic-row strong {
-  color: var(--text);
-}
-
-#loadingIndicator {
-  display: none;
-  align-items: center;
-  gap: 9px;
-  margin-top: 13px;
-  color: var(--cyan);
-  font-size: 11px;
-}
-
-#loadingIndicator[style*="flex"],
-#loadingIndicator[style*="block"] {
-  display: flex;
-}
-
-.spinner {
-  width: 15px;
-  height: 15px;
-  flex-shrink: 0;
-  border: 2px solid rgba(98, 217, 245, 0.2);
-  border-top-color: var(--cyan);
-  border-radius: 50%;
-  animation: mentor-spin 0.8s linear infinite;
-}
-
-@keyframes mentor-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-#errorBox {
-  display: none;
-  padding: 12px 14px;
-  color: #ffb3bf;
-  border: 1px solid rgba(255, 120, 142, 0.24);
-  border-radius: 12px;
-  background: rgba(255, 120, 142, 0.08);
-  overflow-wrap: anywhere;
-}
-
-#pageResult {
-  display: none;
-  flex-direction: column;
-  gap: 13px;
-}
-
-#pageResult.show {
-  display: flex;
-}
-
-.success-card {
-  padding: 15px;
-}
-
-.success-header {
-  margin-bottom: 9px;
-  color: var(--success);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1px;
-}
-
-.page-title {
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-.stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
-}
-
-.stat {
-  padding: 13px;
-  box-shadow: none;
-}
-
-.stat-number {
-  color: var(--cyan);
-  font-size: 23px;
-  line-height: 1.3;
-  font-weight: 800;
-  letter-spacing: -0.7px;
-}
-
-.stat-label {
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.ai-card {
-  padding: 16px;
-}
-
-.ai-header,
-.tools-title {
-  margin: 0 0 12px;
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 750;
-}
-
-textarea {
-  display: block;
-  width: 100%;
-  min-height: 95px;
-  resize: vertical;
-  padding: 13px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  outline: none;
-  color: var(--text);
-  background: #0b1324;
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.65;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-
-textarea::placeholder {
-  color: #7787a6;
-}
-
-textarea:focus {
-  border-color: rgba(130, 116, 255, 0.75);
-  box-shadow: 0 0 0 3px rgba(130, 116, 255, 0.1);
-}
-
-#askButton {
-  margin-top: 11px;
-}
-
-#answerArea {
-  display: none;
-  margin-top: 15px;
-  padding: 13px;
-  border: 1px solid rgba(130, 116, 255, 0.18);
-  border-radius: 12px;
-  background: rgba(130, 116, 255, 0.06);
-}
-
-.answer-heading {
-  margin-bottom: 8px;
-  color: #bdb4ff;
-  font-size: 11px;
-  font-weight: 800;
-}
-
-#answerText {
-  color: #d8e1f5;
-  font-size: 12px;
-  line-height: 1.8;
-  overflow-wrap: anywhere;
-}
-
-.tools-title {
-  margin: 0;
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 1.2px;
-  text-transform: uppercase;
-}
-
-.tools {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 9px;
-}
-
-.tool {
-  padding: 13px 15px;
-  box-shadow: none;
-  transition: border-color 160ms ease, background 160ms ease;
-}
-
-.tool:hover {
-  border-color: rgba(130, 116, 255, 0.32);
-  background: var(--surface-raised);
-}
-
-.tool-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.tool-name {
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.tool-status {
-  padding: 3px 7px;
-  border: 1px solid rgba(80, 223, 176, 0.18);
-  border-radius: 6px;
-  color: var(--success);
-  background: rgba(80, 223, 176, 0.07);
-  font-size: 9px;
-  font-weight: 800;
-}
-
-.tool-description {
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-#securityResult {
-  padding: 15px;
-}
-
-.security-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 13px;
-}
-
-.security-title {
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 750;
-}
-
-.security-total {
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.security-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.security-stat {
-  padding: 11px 7px;
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  background: rgba(255, 255, 255, 0.025);
-  text-align: center;
-}
-
-.security-number {
-  font-size: 20px;
-  font-weight: 800;
-}
-
-.security-label {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.security-stat.safe .security-number {
-  color: var(--success);
-}
-
-.security-stat.suspicious .security-number {
-  color: var(--warning);
-}
-
-.security-stat.risky .security-number {
-  color: var(--danger);
-}
-
-.footer {
-  padding-top: 13px;
-  border-top: 1px solid var(--border);
-  color: #71809e;
-  font-size: 10px;
-  text-align: center;
-}
-
-[hidden] {
-  display: none !important;
-}
-
-@media (max-width: 380px) {
-  .container {
-    padding: 14px;
-    gap: 12px;
-  }
-
-  .header {
-    gap: 9px;
-  }
-
-  .title {
-    font-size: 14px;
-  }
-
-  .connection {
-    padding: 5px 7px;
-  }
-
-  .hero {
-    padding: 15px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
-</style>
-
+        :root {
+            color-scheme: dark;
+            --bg: #090e1b;
+            --surface: #111a2d;
+            --surface-raised: #17233a;
+            --surface-hover: #202e49;
+            --border: rgba(161, 177, 213, 0.15);
+            --border-focus: rgba(130, 116, 255, 0.5);
+            --text: #f3f6ff;
+            --text-secondary: #c0ccdf;
+            --muted: #97a6c3;
+            --primary: #8274ff;
+            --primary-hover: #958aff;
+            --primary-glow: rgba(130, 116, 255, 0.25);
+            --cyan: #62d9f5;
+            --success: #50dfb0;
+            --success-bg: rgba(80, 223, 176, 0.12);
+            --warning: #ffc86b;
+            --warning-bg: rgba(255, 200, 107, 0.12);
+            --danger: #ff788e;
+            --danger-bg: rgba(255, 120, 142, 0.12);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 20px;
+            --shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            min-width: 400px;
+            background: var(--bg);
+        }
+
+        body {
+            width: 430px;
+            max-width: 100%;
+            min-height: 480px;
+            background:
+                radial-gradient(ellipse at 85% 0%, rgba(99, 81, 230, 0.18), transparent 42%),
+                radial-gradient(ellipse at 10% 100%, rgba(98, 217, 245, 0.08), transparent 38%),
+                var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+            font-size: 13px;
+            line-height: 1.5;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* HEADER */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo {
+            width: 38px;
+            height: 38px;
+            flex-shrink: 0;
+            display: grid;
+            place-items: center;
+            border-radius: var(--radius-md);
+            color: white;
+            font-size: 14px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #9182ff, #5c4ad6 65%, #3e9fd8);
+            box-shadow: 0 4px 16px var(--primary-glow);
+        }
+
+        .title-area h1 {
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            color: var(--text);
+            line-height: 1.2;
+        }
+
+        .subtitle {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .connection-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--muted);
+        }
+
+        .connection-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #6b7280;
+            transition: background 0.3s ease;
+        }
+
+        .connection-dot.connected {
+            background: var(--success);
+            box-shadow: 0 0 8px rgba(80, 223, 176, 0.6);
+        }
+
+        .connection-dot.error {
+            background: var(--danger);
+        }
+
+        /* PAGE CONTEXT STRIP */
+        .page-strip {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            gap: 10px;
+        }
+
+        .page-meta {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .page-title-text {
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text);
+        }
+
+        .page-domain {
+            font-size: 11px;
+            color: var(--muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btn-read-page {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, var(--primary), #6351e6);
+            color: white;
+            border: none;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+            box-shadow: 0 2px 10px var(--primary-glow);
+        }
+
+        .btn-read-page:hover:not(:disabled) {
+            background: linear-gradient(135deg, var(--primary-hover), #7463f0);
+            transform: translateY(-1px);
+        }
+
+        .btn-read-page:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* SELECTION BANNER */
+        .selection-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: rgba(98, 217, 245, 0.08);
+            border: 1px solid rgba(98, 217, 245, 0.3);
+            border-radius: var(--radius-md);
+            gap: 8px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .selection-info {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .selection-icon {
+            color: var(--cyan);
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .selection-preview {
+            font-size: 11px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .selection-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .btn-chip {
+            padding: 3px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--surface-raised);
+            color: var(--cyan);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .btn-chip:hover {
+            background: var(--surface-hover);
+            border-color: var(--cyan);
+        }
+
+        /* NAV TABS */
+        .nav-tabs {
+            display: flex;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 3px;
+            gap: 3px;
+        }
+
+        .nav-tab {
+            flex: 1;
+            padding: 7px 4px;
+            background: transparent;
+            border: none;
+            border-radius: var(--radius-sm);
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .nav-tab:hover:not(.active) {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .nav-tab.active {
+            color: white;
+            background: var(--surface-raised);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--border);
+        }
+
+        /* TAB PANELS */
+        .tab-panel {
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .tab-panel.active {
+            display: flex;
+        }
+
+        /* CARDS */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .card-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* QUICK PROMPTS */
+        .quick-prompts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .prompt-chip {
+            padding: 5px 10px;
+            font-size: 11px;
+            font-weight: 500;
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            border-radius: 999px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .prompt-chip:hover {
+            border-color: var(--primary);
+            color: var(--text);
+            background: var(--surface-hover);
+        }
+
+        /* TEXTAREA & INPUTS */
+        .input-area {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 68px;
+            padding: 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 12px;
+            resize: none;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px var(--primary-glow);
+        }
+
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 9px 14px;
+            background: linear-gradient(135deg, var(--primary), #6351e6);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: linear-gradient(135deg, var(--primary-hover), #7463f0);
+            box-shadow: 0 3px 12px var(--primary-glow);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 12px;
+            background: var(--surface-raised);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: var(--surface-hover);
+            border-color: var(--primary);
+        }
+
+        /* ANSWER BOX */
+        .answer-box {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 12px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .answer-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--muted);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding-bottom: 6px;
+        }
+
+        .answer-text {
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .answer-text strong {
+            color: var(--text);
+        }
+
+        .btn-copy {
+            background: transparent;
+            border: none;
+            color: var(--muted);
+            font-size: 11px;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .btn-copy:hover {
+            color: var(--text);
+            background: var(--surface-raised);
+        }
+
+        /* SOURCES ACCORDION */
+        .sources-area {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 4px;
+        }
+
+        .source-pill {
+            font-size: 11px;
+            padding: 6px 8px;
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--muted);
+        }
+
+        .source-pill strong {
+            color: var(--cyan);
+        }
+
+        /* SECURITY TAB STYLES */
+        .verdict-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            border-radius: var(--radius-md);
+            border: 1px solid;
+        }
+
+        .verdict-banner.low {
+            background: var(--success-bg);
+            border-color: rgba(80, 223, 176, 0.3);
+            color: var(--success);
+        }
+
+        .verdict-banner.caution {
+            background: var(--warning-bg);
+            border-color: rgba(255, 200, 107, 0.3);
+            color: var(--warning);
+        }
+
+        .verdict-banner.high {
+            background: var(--danger-bg);
+            border-color: rgba(255, 120, 142, 0.3);
+            color: var(--danger);
+        }
+
+        .verdict-score {
+            font-size: 20px;
+            font-weight: 800;
+        }
+
+        .verdict-title {
+            font-size: 14px;
+            font-weight: 700;
+            display: block;
+        }
+
+        .verdict-subtitle {
+            font-size: 11px;
+            opacity: 0.85;
+        }
+
+        .findings-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .finding-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 8px 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .finding-bullet {
+            font-size: 14px;
+            line-height: 1;
+        }
+
+        .tactics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+        }
+
+        .tactic-tag {
+            padding: 6px 8px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tactic-tag.detected {
+            border-color: var(--danger);
+            background: var(--danger-bg);
+            color: var(--danger);
+            font-weight: 600;
+        }
+
+        /* LINKS TAB STYLES */
+        .links-summary-bar {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+        }
+
+        .stat-mini {
+            padding: 8px 4px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            text-align: center;
+        }
+
+        .stat-mini-val {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .stat-mini-lbl {
+            font-size: 10px;
+            color: var(--muted);
+        }
+
+        .links-scroll-list {
+            max-height: 220px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .link-row {
+            padding: 8px 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            font-size: 11px;
+        }
+
+        .link-row-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }
+
+        .link-label {
+            font-weight: 600;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 250px;
+        }
+
+        .link-url {
+            color: var(--muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 10px;
+        }
+
+        .link-reason {
+            font-size: 10px;
+            color: var(--warning);
+        }
+
+        .badge-risk {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .badge-risk.low {
+            background: var(--success-bg);
+            color: var(--success);
+        }
+
+        .badge-risk.medium {
+            background: var(--warning-bg);
+            color: var(--warning);
+        }
+
+        .badge-risk.high {
+            background: var(--danger-bg);
+            color: var(--danger);
+        }
+
+        /* INSIGHTS STATS */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .stat-box {
+            padding: 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            text-align: center;
+        }
+
+        .stat-box-val {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--cyan);
+        }
+
+        .stat-box-lbl {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .headings-outline {
+            max-height: 180px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .outline-item {
+            font-size: 11px;
+            padding: 5px 8px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-secondary);
+        }
+
+        /* LOADING & SPINNER */
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(3px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ERROR & EMPTY STATES */
+        .alert-box {
+            padding: 10px 12px;
+            border-radius: var(--radius-md);
+            font-size: 12px;
+            display: none;
+        }
+
+        .alert-box.show {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .alert-box.error {
+            background: var(--danger-bg);
+            border: 1px solid rgba(255, 120, 142, 0.4);
+            color: #ff9fb0;
+        }
+
+        .alert-box.info {
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .disclaimer-text {
+            font-size: 10px;
+            color: var(--muted);
+            line-height: 1.4;
+            font-style: italic;
+            text-align: center;
+            margin-top: 4px;
+        }
+
+        /* FOOTER */
+        .footer {
+            text-align: center;
+            font-size: 10px;
+            color: var(--muted);
+            padding-top: 6px;
+            border-top: 1px solid var(--border);
+        }
+    </style>
 </head>
 
-
 <body>
-
     <div class="container">
-
         <!-- HEADER -->
-
-        <div class="header">
-
-            <div class="logo">
-                AI
-            </div>
-
-            <div class="title-area">
-
-                <h1 class="title">
-                    AI Browser Mentor
-                </h1>
-
-                <div class="subtitle">
-                    Your intelligent web companion
+        <header class="header">
+            <div class="brand">
+                <div class="logo">BM</div>
+                <div class="title-area">
+                    <h1>AI Browser Mentor</h1>
+                    <div class="subtitle">Universal Browser Assistant</div>
                 </div>
-
             </div>
-
-            <div class="connection">
-
-                <span
-                    id="connectionDot"
-                    class="connection-dot"
-                ></span>
-
-                <span id="connectionText">
-                    Ready
-                </span>
-
+            <div class="connection-pill" id="connectionPill" title="Backend Server Status">
+                <span class="connection-dot" id="connectionDot"></span>
+                <span id="connectionText">Checking...</span>
             </div>
+        </header>
 
-        </div>
-
-
-        <!-- READ PAGE -->
-
-        <div class="hero">
-
-            <div class="hero-icon">
-                PAGE
+        <!-- PAGE CONTEXT STRIP -->
+        <div class="page-strip" id="pageStrip">
+            <div class="page-meta">
+                <div class="page-title-text" id="activePageTitle">Loading active tab...</div>
+                <div class="page-domain" id="activePageDomain">Please wait</div>
             </div>
-
-            <h2 class="hero-title">
-                Understand this webpage
-            </h2>
-
-            <p class="hero-description">
-                Read the current page to activate
-                AI questioning, page scanning,
-                navigation, and hover protection.
-            </p>
-
-            <button
-                id="readPageButton"
-                type="button"
-            >
-                PAGE - Read Current Page
+            <button class="btn-read-page" id="btnReadPage" type="button">
+                <span class="spinner" id="readPageSpinner" style="display: none;"></span>
+                <span id="readPageText">Read Page</span>
             </button>
-
-            <div
-                id="loadingIndicator"
-                class="loading"
-            >
-
-                <div class="spinner"></div>
-
-                <span id="loadingText">
-                    Reading page...
-                </span>
-
-            </div>
-
         </div>
 
-
-        
-        <!-- SCAMSHIELD EMAIL ANALYSIS -->
-        <div class="hero" id="scamShieldEmailSection">
-            <h2 class="hero-title">Email Scam Analysis</h2>
-            <p class="hero-description">
-                Open an email in Gmail, then analyze its text for suspicious tactics.
-            </p>
-            <button id="scamShieldEmailButton" type="button">
-                Analyze This Email
-            </button>
-            <div id="scamShieldEmailStatus" role="status"
-                 style="margin-top:10px;font-size:13px;color:#6b7280"></div>
-            <div id="scamShieldEmailResults" hidden
-                 style="margin-top:12px;overflow-wrap:anywhere"></div>
+        <!-- SELECTION DETECTED BANNER -->
+        <div class="selection-banner" id="selectionBanner" style="display: none;">
+            <div class="selection-info">
+                <span class="selection-icon">&#9998;</span>
+                <span class="selection-preview" id="selectionPreview">Selection detected...</span>
+            </div>
+            <div class="selection-actions">
+                <button class="btn-chip" id="btnExplainSelection" type="button">Explain</button>
+                <button class="btn-chip" id="btnAuditSelection" type="button">Audit</button>
+            </div>
         </div>
-        <!-- ERROR -->
 
-        <div
-            id="errorBox"
-        ></div>
+        <!-- GLOBAL ALERT BOX -->
+        <div class="alert-box" id="globalAlert"></div>
 
+        <!-- NAVIGATION TABS -->
+        <nav class="nav-tabs" role="tablist">
+            <button class="nav-tab active" id="tabBtnAsk" role="tab" data-tab="panelAsk">&#129504; Ask AI</button>
+            <button class="nav-tab" id="tabBtnSecurity" role="tab" data-tab="panelSecurity">&#128737; Security</button>
+            <button class="nav-tab" id="tabBtnLinks" role="tab" data-tab="panelLinks">&#128279; Links</button>
+            <button class="nav-tab" id="tabBtnInsights" role="tab" data-tab="panelInsights">&#128202; Insights</button>
+        </nav>
 
-        <!-- PAGE RESULT -->
-
-        <div id="pageResult">
-
-            <div class="success-card">
-
-                <div class="success-header">
-                    PAGE UNDERSTOOD
+        <!-- ==================== TAB 1: ASK AI ==================== -->
+        <section class="tab-panel active" id="panelAsk" role="tabpanel">
+            <div class="card">
+                <div class="quick-prompts">
+                    <button class="prompt-chip" data-prompt="Summarize this page in 3 concise bullet points" type="button">&#128221; Summarize</button>
+                    <button class="prompt-chip" data-prompt="What are the key takeaways from this page?" type="button">&#128204; Key Points</button>
+                    <button class="prompt-chip" data-prompt="Explain this page in simple plain English" type="button">&#128161; Explain Simply</button>
+                    <button class="prompt-chip" data-prompt="Is there any suspicious or urgency language on this page?" type="button">&#128269; Safety Check</button>
                 </div>
 
-                <div
-                    id="pageTitle"
-                    class="page-title"
-                >
-                    Current webpage
+                <div class="input-area">
+                    <textarea id="questionInput" placeholder="Ask anything about this webpage, or click a quick prompt above... (Press Enter to ask)"></textarea>
+                    <button class="btn-primary" id="btnAskMentor" type="button">
+                        <span class="spinner" id="askSpinner" style="display: none;"></span>
+                        <span id="askBtnText">Ask Mentor</span>
+                    </button>
                 </div>
 
+                <div class="answer-box" id="answerContainer" style="display: none;">
+                    <div class="answer-meta">
+                        <span id="answerProviderBadge">&#129504; AI Mentor Response</span>
+                        <button class="btn-copy" id="btnCopyAnswer" type="button" title="Copy to clipboard">Copy</button>
+                    </div>
+                    <div class="answer-text" id="answerContent"></div>
+                    <div class="sources-area" id="sourcesArea" style="display: none;"></div>
+                </div>
             </div>
+        </section>
 
-
-            <!-- STATS -->
-
-            <div class="stats">
-
-                <div class="stat">
-
-                    <div
-                        id="chunkCount"
-                        class="stat-number"
-                    >
-                        0
-                    </div>
-
-                    <div class="stat-label">
-                        Content chunks
-                    </div>
-
+        <!-- ==================== TAB 2: SECURITY ==================== -->
+        <section class="tab-panel" id="panelSecurity" role="tabpanel">
+            <!-- GMAIL SPECIFIC HERO (Auto-shown if on mail.google.com) -->
+            <div class="card" id="gmailSection" style="display: none;">
+                <div class="card-header">
+                    <span class="card-title">&#9993; Gmail ScamShield Inspector</span>
+                    <span class="badge-risk low">Gmail Active</span>
                 </div>
-
-
-                <div class="stat">
-
-                    <div
-                        id="imageCount"
-                        class="stat-number"
-                    >
-                        0
-                    </div>
-
-                    <div class="stat-label">
-                        Images
-                    </div>
-
-                </div>
-
-
-                <div class="stat">
-
-                    <div
-                        id="linkCount"
-                        class="stat-number"
-                    >
-                        0
-                    </div>
-
-                    <div class="stat-label">
-                        Links
-                    </div>
-
-                </div>
-
-
-                <div class="stat">
-
-                    <div
-                        id="elementCount"
-                        class="stat-number"
-                    >
-                        0
-                    </div>
-
-                    <div class="stat-label">
-                        Interactive elements
-                    </div>
-
-                </div>
-
-            </div>
-
-
-            <!-- =================================================
-                 SINGLE AI CARD
-            ================================================== -->
-
-            <div class="ai-card">
-
-                <div class="ai-header">
-                    ASK - Ask about this page
-                </div>
-
-                <textarea
-                    id="questionInput"
-                    placeholder="Ask anything about this page...&#10;&#10;Examples:&#10;- Summarize this page&#10;- What is the main topic?&#10;- Take me to the search box"
-                ></textarea>
-
-                <button
-                    id="askButton"
-                    type="button"
-                >
-                    Ask Mentor
+                <p style="font-size: 11px; color: var(--text-secondary);">
+                    An individual open email was detected. Scan email text for manipulation tactics using the ScamShield model.
+                </p>
+                <button class="btn-secondary" id="btnScanGmail" type="button">
+                    <span class="spinner" id="gmailSpinner" style="display: none;"></span>
+                    <span id="gmailBtnText">Scan Open Email</span>
                 </button>
-
-
-                <!-- ANSWER IS INSIDE SAME CARD -->
-
-                <div
-                    id="answerArea"
-                >
-
-                    <div class="answer-heading">
-                        AI Mentor
-                    </div>
-
-                    <div
-                        id="answerText"
-                    ></div>
-
-                </div>
-
             </div>
 
+            <!-- GENERAL PAGE & SELECTION SECURITY -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">&#128737; Security Analysis</span>
+                    <span id="securityStatusTag" class="badge-risk low">Ready</span>
+                </div>
 
-            <!-- ACTIVE TOOLS -->
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn-secondary" id="btnAuditPage" type="button" style="flex: 1;">
+                        <span class="spinner" id="auditPageSpinner" style="display: none;"></span>
+                        <span>Audit Webpage</span>
+                    </button>
+                    <button class="btn-secondary" id="btnAuditSelectionDirect" type="button" style="flex: 1;">
+                        <span class="spinner" id="auditSelSpinner" style="display: none;"></span>
+                        <span>Audit Selected Text</span>
+                    </button>
+                </div>
 
-            <div class="tools-title">
-                Active tools
+                <!-- VERDICT DISPLAY -->
+                <div id="securityVerdictArea" style="display: none; flex-direction: column; gap: 10px;">
+                    <div class="verdict-banner low" id="verdictBanner">
+                        <div>
+                            <span class="verdict-title" id="verdictTitle">Low Risk</span>
+                            <span class="verdict-subtitle" id="verdictSubtitle">No prominent threats flagged</span>
+                        </div>
+                        <div class="verdict-score" id="verdictScore">0/100</div>
+                    </div>
+
+                    <div style="font-size: 11px; font-weight: 700; color: var(--text);">Evidence & Indicators:</div>
+                    <div class="findings-list" id="findingsList"></div>
+
+                    <div id="scamshieldSection" style="display: none;">
+                        <div style="font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 6px;">
+                            ScamShield Model Tactics:
+                        </div>
+                        <div class="tactics-grid" id="tacticsGrid"></div>
+                    </div>
+
+                    <p class="disclaimer-text" id="securityDisclaimer">
+                        Automated security assessment only. Scores do not guarantee whether content is benign or fraudulent.
+                    </p>
+                </div>
             </div>
+        </section>
 
-            <div class="tools">
-
-                <div class="tool">
-
-                    <div class="tool-top">
-
-                        <span class="tool-name">
-                            Page Scanner
-                        </span>
-
-                        <span class="tool-status">
-                            ON
-                        </span>
-
-                    </div>
-
-                    <div class="tool-description">
-                        Links are analyzed for potential risks.
-                    </div>
-
+        <!-- ==================== TAB 3: LINKS ==================== -->
+        <section class="tab-panel" id="panelLinks" role="tabpanel">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">&#128279; Link Inspector</span>
+                    <button class="btn-chip" id="btnRescanLinks" type="button">Scan Links</button>
                 </div>
 
-
-                <div class="tool">
-
-                    <div class="tool-top">
-
-                        <span class="tool-name">
-                            Hover Guard
-                        </span>
-
-                        <span class="tool-status">
-                            ON
-                        </span>
-
-                    </div>
-
-                    <div class="tool-description">
-                        Hover over a link to see its security status.
-                    </div>
-
+                <!-- CUSTOM LINK CHECK INPUT -->
+                <div style="display: flex; gap: 6px;">
+                    <input type="text" id="customLinkInput" placeholder="Inspect custom URL (https://...)" style="flex: 1; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 11px; outline: none;">
+                    <button class="btn-secondary" id="btnCheckCustomLink" type="button" style="padding: 6px 10px; font-size: 11px;">Check</button>
                 </div>
 
+                <!-- SUMMARY COUNTERS -->
+                <div class="links-summary-bar">
+                    <div class="stat-mini">
+                        <div class="stat-mini-val" id="linkTotalCount">0</div>
+                        <div class="stat-mini-lbl">Total</div>
+                    </div>
+                    <div class="stat-mini">
+                        <div class="stat-mini-val" style="color: var(--success);" id="linkSafeCount">0</div>
+                        <div class="stat-mini-lbl">Safe</div>
+                    </div>
+                    <div class="stat-mini">
+                        <div class="stat-mini-val" style="color: var(--warning);" id="linkSuspiciousCount">0</div>
+                        <div class="stat-mini-lbl">Caution</div>
+                    </div>
+                    <div class="stat-mini">
+                        <div class="stat-mini-val" style="color: var(--danger);" id="linkRiskyCount">0</div>
+                        <div class="stat-mini-lbl">Risky</div>
+                    </div>
+                </div>
+
+                <!-- SCROLLABLE LINKS LIST -->
+                <div class="links-scroll-list" id="linksListContainer">
+                    <div style="font-size: 11px; color: var(--muted); text-align: center; padding: 16px;">
+                        Read the page to scan and inspect all links.
+                    </div>
+                </div>
             </div>
+        </section>
 
-
-            <!-- SECURITY RESULT -->
-
-            <div id="securityResult">
-
-                <div class="security-header">
-
-                    <div class="security-title">
-                        Security Scan
-                    </div>
-
-                    <div
-                        id="securityTotal"
-                        class="security-total"
-                    >
-                        0 links
-                    </div>
-
+        <!-- ==================== TAB 4: INSIGHTS ==================== -->
+        <section class="tab-panel" id="panelInsights" role="tabpanel">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">&#128202; Page Structure</span>
+                    <button class="btn-chip" id="btnSummaryDirect" type="button">&#128221; Summarize</button>
                 </div>
 
-                <div class="security-grid">
-
-                    <div class="security-stat safe">
-
-                        <div
-                            id="safeCount"
-                            class="security-number"
-                        >
-                            0
-                        </div>
-
-                        <div class="security-label">
-                            Safe
-                        </div>
-
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-box-val" id="insightWordCount">0</div>
+                        <div class="stat-box-lbl">Word Count</div>
                     </div>
-
-
-                    <div class="security-stat suspicious">
-
-                        <div
-                            id="suspiciousCount"
-                            class="security-number"
-                        >
-                            0
-                        </div>
-
-                        <div class="security-label">
-                            Suspicious
-                        </div>
-
+                    <div class="stat-box">
+                        <div class="stat-box-val" id="insightReadTime">0 min</div>
+                        <div class="stat-box-lbl">Est. Reading Time</div>
                     </div>
-
-
-                    <div class="security-stat risky">
-
-                        <div
-                            id="riskyCount"
-                            class="security-number"
-                        >
-                            0
-                        </div>
-
-                        <div class="security-label">
-                            High Risk
-                        </div>
-
+                    <div class="stat-box">
+                        <div class="stat-box-val" id="insightChunks">0</div>
+                        <div class="stat-box-lbl">Analyzed Chunks</div>
                     </div>
-
+                    <div class="stat-box">
+                        <div class="stat-box-val" id="insightLinks">0</div>
+                        <div class="stat-box-lbl">Links Found</div>
+                    </div>
                 </div>
 
+                <div style="font-size: 11px; font-weight: 700; color: var(--text); margin-top: 4px;">
+                    Page Sections / Headings:
+                </div>
+                <div class="headings-outline" id="headingsOutlineContainer">
+                    <div style="font-size: 11px; color: var(--muted); text-align: center; padding: 12px;">
+                        No sections extracted yet.
+                    </div>
+                </div>
             </div>
+        </section>
 
-        </div>
-
-
-        <div class="footer">
-            AI Browser Mentor - Intelligent browsing assistance
-        </div>
-
+        <!-- FOOTER -->
+        <footer class="footer">
+            Privacy-first: Only necessary webpage context is transmitted for analysis. Never submits credentials.
+        </footer>
     </div>
 
-
     <script src="popup.js"></script>
-
 </body>
 
 </html>
-

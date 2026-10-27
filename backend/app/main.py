@@ -622,16 +622,24 @@ def root():
 
 @app.get("/health")
 def health():
+    from app.services.security_service import SCAMSHIELD_AVAILABLE
 
     return {
         "success": True,
         "status": "healthy",
-        "groq_configured":
-            bool(GROQ_API_KEY),
-        "model":
-            GROQ_MODEL,
-        "pages":
-            len(page_store)
+        "groq_configured": bool(GROQ_API_KEY),
+        "scamshield_configured": SCAMSHIELD_AVAILABLE,
+        "model": GROQ_MODEL,
+        "pages": len(page_store),
+        "capabilities": [
+            "summarize_page",
+            "answer_page_question",
+            "extract_page_information",
+            "analyze_selected_text",
+            "analyze_page_security",
+            "inspect_links",
+            "scamshield_fraud_tactics"
+        ]
     }
 
 
@@ -740,60 +748,6 @@ async def ingest_page(
         "interactiveElementCount": len(request.interactiveElements),
         "wordCount": request.wordCount
     }
-    # ========================================================
-    # RAG: CREATE VECTOR INDEX
-    # ========================================================
-
-    try:
-
-        chunk_texts = []
-
-        for chunk in request.chunks:
-
-            if isinstance(chunk, dict):
-
-                text = build_chunk_text(chunk)
-
-            else:
-
-                text = clean_text(chunk)
-
-            if text:
-                chunk_texts.append(text)
-
-
-        if chunk_texts:
-
-            embeddings = embed_texts(
-                chunk_texts
-            )
-
-            create_index(
-                page_id,
-                embeddings,
-                request.chunks
-            )
-
-
-            print(
-                "RAG INDEX CREATED:",
-                len(chunk_texts),
-                "chunks"
-            )
-
-        else:
-
-            print(
-                "RAG INDEX: No chunks available"
-            )
-
-
-    except Exception as error:
-
-        print(
-            "RAG INDEX ERROR:",
-            error
-        )
 
 
 # ============================================================
@@ -2535,3 +2489,77 @@ def scamshield_analyze_text(request: ScamShieldTextRequest):
     except RuntimeError as error:
         from fastapi import HTTPException
         raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+# ============================================================
+# UNIVERSAL ASSISTANT & ORCHESTRATOR
+# ============================================================
+
+from app.services.intent_router import execute_tool_request
+from app.services.security_service import analyze_security_text, analyze_page_security
+from app.schemas import AssistantQueryRequest, SecurityTextRequest, PageSummaryRequest
+
+
+@app.post("/assistant/query")
+async def assistant_query(request: AssistantQueryRequest):
+    """
+    Central router endpoint for universal queries:
+    - Summaries
+    - Q&A
+    - Security analysis
+    - Link inspection
+    - Selection explanation
+    """
+    page = get_page(request.page_id) if request.page_id else None
+    return await execute_tool_request(
+        query=request.query,
+        page=page,
+        selection_text=request.selection_text,
+        mode=request.mode,
+        groq_api_key=GROQ_API_KEY,
+        groq_model=GROQ_MODEL
+    )
+
+
+@app.post("/security/analyze-text")
+def universal_security_analyze_text(request: SecurityTextRequest):
+    """
+    General-purpose security analysis for user selections or messages,
+    combining ScamShield tactic detection and heuristic indicators.
+    """
+    from fastapi import HTTPException
+    text = request.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Text cannot be blank.")
+    return analyze_security_text(text, context=request.context)
+
+
+@app.post("/security/analyze-page")
+def security_analyze_page_endpoint(request: PageSummaryRequest):
+    """
+    Complete security audit of an ingested webpage (forms, links, content cues).
+    """
+    from fastapi import HTTPException
+    page = get_page(request.page_id)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found. Please read page first.")
+    return analyze_page_security(page)
+
+
+@app.post("/page/summary")
+async def page_summary_endpoint(request: PageSummaryRequest):
+    """
+    Produce structured summary and key points for an ingested webpage.
+    """
+    from fastapi import HTTPException
+    page = get_page(request.page_id)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found. Please read page first.")
+    return await execute_tool_request(
+        query="Summarize this page with key points",
+        page=page,
+        mode="summary",
+        groq_api_key=GROQ_API_KEY,
+        groq_model=GROQ_MODEL
+    )
+

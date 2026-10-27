@@ -1,1708 +1,798 @@
-﻿// ============================================================
-// AI BROWSER MENTOR - POPUP
+// ============================================================
+// AI BROWSER MENTOR - UNIVERSAL EXTENSION CONTROLLER
 // ============================================================
 
-console.log(
-    "POPUP: AI Browser Mentor loaded"
-);
+const BACKEND_URL = "http://127.0.0.1:8000";
 
-
-// ============================================================
-// CONFIG
-// ============================================================
-
-const BACKEND_URL =
-    "http://127.0.0.1:8000";
-
-
-// ============================================================
-// DOM
-// ============================================================
-
-const readPageButton =
-    document.getElementById("readPageButton");
-
-const loadingIndicator =
-    document.getElementById("loadingIndicator");
-
-const loadingText =
-    document.getElementById("loadingText");
-
-const pageResult =
-    document.getElementById("pageResult");
-
-const errorBox =
-    document.getElementById("errorBox");
-
-const pageTitle =
-    document.getElementById("pageTitle");
-
-const chunkCount =
-    document.getElementById("chunkCount");
-
-const imageCount =
-    document.getElementById("imageCount");
-
-const linkCount =
-    document.getElementById("linkCount");
-
-const elementCount =
-    document.getElementById("elementCount");
-
-const questionInput =
-    document.getElementById("questionInput");
-
-const askButton =
-    document.getElementById("askButton");
-
-const answerArea =
-    document.getElementById("answerArea");
-
-const answerText =
-    document.getElementById("answerText");
-
-const scanResult =
-    document.getElementById("securityResult");
-
-const securityTotal =
-    document.getElementById("securityTotal");
-
-const safeCount =
-    document.getElementById("safeCount");
-
-const suspiciousCount =
-    document.getElementById("suspiciousCount");
-
-const riskyCount =
-    document.getElementById("riskyCount");
-
-const connectionDot =
-    document.getElementById("connectionDot");
-
-const connectionText =
-    document.getElementById("connectionText");
-
-
-// ============================================================
-// STATE
-// ============================================================
-
+// State
 let currentTab = null;
+let currentPageId = "";
+let currentPageData = null;
+let currentSelection = "";
+let isReadingPage = false;
+let isAsking = false;
 
-let pageData = null;
+// DOM Elements
+const connectionDot = document.getElementById("connectionDot");
+const connectionText = document.getElementById("connectionText");
+const activePageTitle = document.getElementById("activePageTitle");
+const activePageDomain = document.getElementById("activePageDomain");
+const btnReadPage = document.getElementById("btnReadPage");
+const readPageSpinner = document.getElementById("readPageSpinner");
+const readPageText = document.getElementById("readPageText");
 
-let currentPageId = null;
+const selectionBanner = document.getElementById("selectionBanner");
+const selectionPreview = document.getElementById("selectionPreview");
+const btnExplainSelection = document.getElementById("btnExplainSelection");
+const btnAuditSelection = document.getElementById("btnAuditSelection");
+const globalAlert = document.getElementById("globalAlert");
 
-let pageRead = false;
+// Nav tabs
+const navTabs = document.querySelectorAll(".nav-tab");
+const tabPanels = document.querySelectorAll(".tab-panel");
 
-let mentorEnabled = false;
+// Ask AI Panel
+const questionInput = document.getElementById("questionInput");
+const btnAskMentor = document.getElementById("btnAskMentor");
+const askSpinner = document.getElementById("askSpinner");
+const askBtnText = document.getElementById("askBtnText");
+const answerContainer = document.getElementById("answerContainer");
+const answerContent = document.getElementById("answerContent");
+const answerProviderBadge = document.getElementById("answerProviderBadge");
+const btnCopyAnswer = document.getElementById("btnCopyAnswer");
+const sourcesArea = document.getElementById("sourcesArea");
+const promptChips = document.querySelectorAll(".prompt-chip");
+
+// Security Panel
+const gmailSection = document.getElementById("gmailSection");
+const btnScanGmail = document.getElementById("btnScanGmail");
+const gmailSpinner = document.getElementById("gmailSpinner");
+const gmailBtnText = document.getElementById("gmailBtnText");
+const btnAuditPage = document.getElementById("btnAuditPage");
+const auditPageSpinner = document.getElementById("auditPageSpinner");
+const btnAuditSelectionDirect = document.getElementById("btnAuditSelectionDirect");
+const auditSelSpinner = document.getElementById("auditSelSpinner");
+const securityVerdictArea = document.getElementById("securityVerdictArea");
+const verdictBanner = document.getElementById("verdictBanner");
+const verdictTitle = document.getElementById("verdictTitle");
+const verdictSubtitle = document.getElementById("verdictSubtitle");
+const verdictScore = document.getElementById("verdictScore");
+const findingsList = document.getElementById("findingsList");
+const scamshieldSection = document.getElementById("scamshieldSection");
+const tacticsGrid = document.getElementById("tacticsGrid");
+const securityStatusTag = document.getElementById("securityStatusTag");
+
+// Links Panel
+const btnRescanLinks = document.getElementById("btnRescanLinks");
+const customLinkInput = document.getElementById("customLinkInput");
+const btnCheckCustomLink = document.getElementById("btnCheckCustomLink");
+const linkTotalCount = document.getElementById("linkTotalCount");
+const linkSafeCount = document.getElementById("linkSafeCount");
+const linkSuspiciousCount = document.getElementById("linkSuspiciousCount");
+const linkRiskyCount = document.getElementById("linkRiskyCount");
+const linksListContainer = document.getElementById("linksListContainer");
+
+// Insights Panel
+const insightWordCount = document.getElementById("insightWordCount");
+const insightReadTime = document.getElementById("insightReadTime");
+const insightChunks = document.getElementById("insightChunks");
+const insightLinks = document.getElementById("insightLinks");
+const headingsOutlineContainer = document.getElementById("headingsOutlineContainer");
+const btnSummaryDirect = document.getElementById("btnSummaryDirect");
 
 
 // ============================================================
-// CURRENT TAB
+// HELPER FUNCTIONS
 // ============================================================
 
-async function getCurrentTab() {
-
-    const tabs =
-        await chrome.tabs.query({
-
-            active: true,
-
-            currentWindow: true
-        });
-
-
-    return tabs[0];
+function showAlert(message, type = "error") {
+    if (!globalAlert) return;
+    globalAlert.textContent = message;
+    globalAlert.className = `alert-box show ${type}`;
 }
 
+function clearAlert() {
+    if (!globalAlert) return;
+    globalAlert.className = "alert-box";
+    globalAlert.textContent = "";
+}
 
-// ============================================================
-// RESTRICTED PAGE CHECK
-// ============================================================
+function switchTab(targetPanelId) {
+    navTabs.forEach(tab => {
+        const isActive = tab.getAttribute("data-tab") === targetPanelId;
+        tab.classList.toggle("active", isActive);
+    });
 
-function isRestrictedPage(
-    url
-) {
+    tabPanels.forEach(panel => {
+        panel.classList.toggle("active", panel.id === targetPanelId);
+    });
+}
 
-    if (!url) {
-        return true;
-    }
-
-
+function isRestrictedUrl(url) {
+    if (!url) return true;
     return (
-
         url.startsWith("chrome://") ||
-
-        url.startsWith(
-            "chrome-extension://"
-        ) ||
-
+        url.startsWith("chrome-extension://") ||
         url.startsWith("edge://") ||
-
         url.startsWith("about:") ||
-
-        url.startsWith("devtools:")
+        url.startsWith("view-source:")
     );
 }
 
-
-// ============================================================
-// STATUS
-// ============================================================
-
-function setStatus(
-    active,
-    text
-) {
-
-    connectionDot?.classList.toggle(
-        "active",
-        active
-    );
-
-
-    if (connectionText) {
-
-        connectionText.textContent =
-            text;
-    }
+function escapeHtml(str) {
+    if (!str) return "";
+    return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 
 // ============================================================
-// ERROR
-// ============================================================
-
-function showError(
-    message
-) {
-
-    if (!errorBox) {
-        return;
-    }
-
-
-    errorBox.textContent =
-        message ||
-        "Something went wrong.";
-
-
-    errorBox.classList.add(
-        "show"
-    );
-}
-
-
-function clearError() {
-
-    if (!errorBox) {
-        return;
-    }
-
-
-    errorBox.textContent =
-        "";
-
-
-    errorBox.classList.remove(
-        "show"
-    );
-}
-
-
-// ============================================================
-// LOADING
-// ============================================================
-
-function setLoading(
-    enabled,
-    message
-) {
-
-    loadingIndicator?.classList.toggle(
-        "show",
-        enabled
-    );
-
-
-    if (loadingText && message) {
-
-        loadingText.textContent =
-            message;
-    }
-
-
-    if (readPageButton) {
-
-        readPageButton.disabled =
-            enabled;
-
-        readPageButton.classList.toggle(
-            "loading",
-            enabled
-        );
-    }
-}
-
-
-// ============================================================
-// NUMBER FORMAT
-// ============================================================
-
-function formatNumber(
-    value
-) {
-
-    return Number(
-        value || 0
-    ).toLocaleString();
-}
-
-
-// ============================================================
-// GENERATE PAGE ID
-// ============================================================
-
-function generatePageId(
-    tab
-) {
-
-    if (
-        pageData?.page_id
-    ) {
-
-        return pageData.page_id;
-    }
-
-
-    if (
-        pageData?.pageId
-    ) {
-
-        return pageData.pageId;
-    }
-
-
-    return (
-        tab?.url ||
-        `tab_${tab?.id || Date.now()}`
-    );
-}
-
-
-// ============================================================
-// NORMALIZE PAGE DATA
-// ============================================================
-
-function normalizePageData(
-    raw
-) {
-
-    const data =
-        raw?.page ||
-        raw?.data ||
-        raw;
-
-
-    return {
-
-        ...data,
-
-        page_id:
-            data?.page_id ||
-            data?.pageId ||
-            data?.url ||
-            `page_${Date.now()}`,
-
-        title:
-            data?.title ||
-            "Current webpage",
-
-        url:
-            data?.url ||
-            currentTab?.url ||
-            "",
-
-        hostname:
-            data?.hostname ||
-            (() => {
-
-                try {
-
-                    return new URL(
-                        data?.url ||
-                        currentTab?.url
-                    ).hostname;
-
-                } catch {
-
-                    return "";
-                }
-
-            })(),
-
-        headings:
-            Array.isArray(
-                data?.headings
-            )
-                ? data.headings
-                : [],
-
-        paragraphs:
-            Array.isArray(
-                data?.paragraphs
-            )
-                ? data.paragraphs
-                : [],
-
-        links:
-            Array.isArray(
-                data?.links
-            )
-                ? data.links
-                : [],
-
-        chunks:
-            Array.isArray(
-                data?.chunks
-            )
-                ? data.chunks
-                : [],
-
-        interactiveElements:
-            Array.isArray(
-                data?.interactiveElements
-            )
-                ? data.interactiveElements
-                : [],
-
-        content:
-            data?.content ||
-            "",
-
-        wordCount:
-            Number(
-                data?.wordCount ||
-                0
-            )
-    };
-}
-
-
-// ============================================================
-// SEND PAGE TO BACKEND
-// ============================================================
-
-async function ingestPage(
-    data
-) {
-
-    console.log(
-        "POPUP: Sending page to /page/ingest"
-    );
-
-
-    const response =
-        await fetch(
-            `${BACKEND_URL}/page/ingest`,
-            {
-
-                method: "POST",
-
-                headers: {
-                    "Content-Type":
-                        "application/json"
-                },
-
-                body:
-                    JSON.stringify({
-
-                        page_id:
-                            data.page_id,
-
-                        title:
-                            data.title,
-
-                        url:
-                            data.url,
-
-                        hostname:
-                            data.hostname,
-
-                        description:
-                            data.description ||
-                            "",
-
-                        headings:
-                            data.headings,
-
-                        paragraphs:
-                            data.paragraphs,
-
-                        links:
-                            data.links,
-
-                        chunks:
-                            data.chunks,
-
-                        content:
-                            data.content,
-
-                        interactiveElements:
-                            data.interactiveElements,
-
-                        wordCount:
-                            data.wordCount
-                    })
-            }
-        );
-
-
-    if (!response.ok) {
-
-        const text =
-            await response.text();
-
-        throw new Error(
-            `Backend /page/ingest error ${response.status}: ${text}`
-        );
-    }
-
-
-    const result =
-        await response.json();
-
-
-    console.log(
-        "POPUP: PAGE INGESTED",
-        result
-    );
-
-
-    if (
-        result.success === false
-    ) {
-
-        throw new Error(
-            result.message ||
-            "Backend could not store the page."
-        );
-    }
-
-
-    return result;
-}
-
-
-// ============================================================
-// GET PAGE FROM CONTENT SCRIPT
-// ============================================================
-
-async function getPageContent() {
-
-    if (!currentTab?.id) {
-
-        throw new Error(
-            "No active browser tab."
-        );
-    }
-
-
-    try {
-
-        const response =
-            await chrome.tabs.sendMessage(
-
-                currentTab.id,
-
-                {
-                    type:
-                        "GET_PAGE_CONTENT"
-                }
-            );
-
-
-        if (!response) {
-
-            throw new Error(
-                "The webpage did not respond."
-            );
-        }
-
-
-        if (
-            response.success === false
-        ) {
-
-            throw new Error(
-                response.error ||
-                response.message ||
-                "Could not read the webpage."
-            );
-        }
-
-
-        return response;
-
-    } catch (error) {
-
-        console.error(
-            "POPUP: GET_PAGE_CONTENT ERROR",
-            error
-        );
-
-
-        throw new Error(
-            "Could not read this page. Refresh the webpage and try again."
-        );
-    }
-}
-
-
-// ============================================================
-// ENABLE MENTOR
-// ============================================================
-
-async function enableMentor() {
-
-    if (!currentTab?.id) {
-        return false;
-    }
-
-
-    try {
-
-        const response =
-            await chrome.runtime.sendMessage({
-
-                type:
-                    "TOGGLE_MENTOR",
-
-                tabId:
-                    currentTab.id
-            });
-
-
-        console.log(
-            "POPUP: MENTOR TOGGLE",
-            response
-        );
-
-
-        if (
-            response?.success
-        ) {
-
-            mentorEnabled =
-                response.enabled;
-
-            return mentorEnabled;
-        }
-
-    } catch (error) {
-
-        console.warn(
-            "POPUP: Background Mentor toggle failed",
-            error
-        );
-    }
-
-
-    // Fallback to content script.
-
-    try {
-
-        const response =
-            await chrome.tabs.sendMessage(
-
-                currentTab.id,
-
-                {
-                    type:
-                        "MENTOR_STATE",
-
-                    enabled:
-                        true
-                }
-            );
-
-
-        mentorEnabled =
-            response?.enabled !== false;
-
-
-        return mentorEnabled;
-
-    } catch (error) {
-
-        console.error(
-            "POPUP: Direct Mentor activation failed",
-            error
-        );
-
-
-        return false;
-    }
-}
-
-
-// ============================================================
-// UPDATE PAGE UI
-// ============================================================
-
-function showPageResult(
-    data
-) {
-
-    pageData =
-        data;
-
-    currentPageId =
-        data.page_id;
-
-    pageRead =
-        true;
-
-
-    if (pageTitle) {
-
-        pageTitle.textContent =
-            data.title;
-    }
-
-
-    if (chunkCount) {
-
-        chunkCount.textContent =
-            formatNumber(
-                data.chunks.length
-            );
-    }
-
-
-    if (imageCount) {
-
-        imageCount.textContent =
-            formatNumber(
-                data.images?.length ||
-                0
-            );
-    }
-
-
-    if (linkCount) {
-
-        linkCount.textContent =
-            formatNumber(
-                data.links.length
-            );
-    }
-
-
-    if (elementCount) {
-
-        elementCount.textContent =
-            formatNumber(
-                data.interactiveElements.length
-            );
-    }
-
-
-    pageResult?.classList.add(
-        "show"
-    );
-
-
-    if (readPageButton) {
-
-        readPageButton.textContent =
-            "Page Read Successfully";
-
-        readPageButton.classList.add(
-            "success"
-        );
-    }
-}
-
-
-// ============================================================
-// READ CURRENT PAGE
-// ============================================================
-
-async function readCurrentPage() {
-
-    clearError();
-
-
-    try {
-
-        currentTab =
-            await getCurrentTab();
-
-
-        if (
-            !currentTab?.id
-        ) {
-
-            throw new Error(
-                "No active browser tab."
-            );
-        }
-
-
-        if (
-            isRestrictedPage(
-                currentTab.url
-            )
-        ) {
-
-            throw new Error(
-                "Chrome does not allow the extension to read this page."
-            );
-        }
-
-
-        setLoading(
-            true,
-            "Reading webpage..."
-        );
-
-
-        setStatus(
-            false,
-            "Reading..."
-        );
-
-
-        // ----------------------------------------------------
-        // 1. Extract page locally
-        // ----------------------------------------------------
-
-        const rawPage =
-            await getPageContent();
-
-
-        console.log(
-            "POPUP: RAW PAGE",
-            rawPage
-        );
-
-
-        // ----------------------------------------------------
-        // 2. Normalize page
-        // ----------------------------------------------------
-
-        const normalized =
-            normalizePageData(
-                rawPage
-            );
-
-
-        pageData =
-            normalized;
-
-
-        currentPageId =
-            generatePageId(
-                currentTab
-            );
-
-
-        normalized.page_id =
-            currentPageId;
-
-
-        // ----------------------------------------------------
-        // 3. Store page in FastAPI
-        // ----------------------------------------------------
-
-        setLoading(
-            true,
-            "Saving page context..."
-        );
-
-
-        await ingestPage(
-            normalized
-        );
-
-
-        // ----------------------------------------------------
-        // 4. Show UI
-        // ----------------------------------------------------
-
-        showPageResult(
-            normalized
-        );
-
-
-        // ----------------------------------------------------
-        // 5. Enable all Mentor features
-        // ----------------------------------------------------
-
-        setLoading(
-            true,
-            "Activating Mentor..."
-        );
-
-
-        await enableMentor();
-
-
-        // ----------------------------------------------------
-        // 6. Scan links
-        // ----------------------------------------------------
-
-        setLoading(
-            true,
-            "Scanning page links..."
-        );
-
-
-        await scanPage();
-
-
-        // ----------------------------------------------------
-        // DONE
-        // ----------------------------------------------------
-
-        setLoading(
-            false
-        );
-
-
-        setStatus(
-            true,
-            "Active"
-        );
-
-
-        console.log(
-            "POPUP: PAGE ACTIVATION COMPLETE"
-        );
-
-    } catch (error) {
-
-        console.error(
-            "POPUP: READ ERROR",
-            error
-        );
-
-
-        setLoading(
-            false
-        );
-
-
-        setStatus(
-            false,
-            "Error"
-        );
-
-
-        showError(
-            error?.message ||
-            "Could not read the current page."
-        );
-    }
-}
-
-
-// ============================================================
-// SCAN PAGE
-// ============================================================
-
-async function scanPage() {
-
-    if (!currentTab?.id) {
-        return;
-    }
-
-
-    try {
-
-        const response =
-            await chrome.tabs.sendMessage(
-
-                currentTab.id,
-
-                {
-                    type:
-                        "SCAN_LINKS"
-                }
-            );
-
-
-        console.log(
-            "POPUP: SCAN RESULT",
-            response
-        );
-
-
-        if (
-            !response?.success
-        ) {
-
-            throw new Error(
-                response?.error ||
-                response?.message ||
-                "Could not scan page links."
-            );
-        }
-
-
-        const summary =
-            response.summary ||
-            {};
-
-
-        scanResult?.classList.add(
-            "show"
-        );
-
-
-        if (securityTotal) {
-
-            securityTotal.textContent =
-                `${formatNumber(
-                    summary.total
-                )} links`;
-        }
-
-
-        if (safeCount) {
-
-            safeCount.textContent =
-                formatNumber(
-                    summary.low ??
-                    summary.safe ??
-                    0
-                );
-        }
-
-
-        if (suspiciousCount) {
-
-            suspiciousCount.textContent =
-                formatNumber(
-                    summary.medium ??
-                    summary.suspicious ??
-                    0
-                );
-        }
-
-
-        if (riskyCount) {
-
-            riskyCount.textContent =
-                formatNumber(
-                    summary.high ??
-                    summary.risky ??
-                    0
-                );
-        }
-
-
-        return response;
-
-    } catch (error) {
-
-        console.error(
-            "POPUP: SCAN ERROR",
-            error
-        );
-
-
-        showError(
-            error?.message ||
-            "Could not scan the page."
-        );
-
-
-        return null;
-    }
-}
-
-
-// ============================================================
-// DETECT NAVIGATION REQUEST
-// ============================================================
-
-function looksLikeNavigationRequest(
-    question
-) {
-
-    const text =
-        question
-            .toLowerCase()
-            .trim();
-
-
-    const navigationPatterns = [
-
-        "take me to",
-
-        "go to",
-
-        "navigate to",
-
-        "find the",
-
-        "where is the",
-
-        "where can i",
-
-        "show me the",
-
-        "locate the",
-
-        "open the",
-
-        "click the",
-
-        "click on",
-
-        "bring me to",
-
-        "scroll to"
-    ];
-
-
-    return navigationPatterns.some(
-        pattern =>
-            text.includes(pattern)
-    );
-}
-
-
-// ============================================================
-// CLEAN NAVIGATION QUERY
-// ============================================================
-
-function cleanNavigationQuery(
-    question
-) {
-
-    let query =
-        question
-            .trim();
-
-
-    const patterns = [
-
-        /^take me to\s+/i,
-
-        /^go to\s+/i,
-
-        /^navigate to\s+/i,
-
-        /^find the\s+/i,
-
-        /^where is the\s+/i,
-
-        /^where can i\s+/i,
-
-        /^show me the\s+/i,
-
-        /^locate the\s+/i,
-
-        /^open the\s+/i,
-
-        /^click the\s+/i,
-
-        /^click on\s+/i,
-
-        /^bring me to\s+/i,
-
-        /^scroll to\s+/i
-    ];
-
-
-    for (
-        const pattern
-        of patterns
-    ) {
-
-        query =
-            query.replace(
-                pattern,
-                ""
-            );
-
-        break;
-    }
-
-
-    return query.trim();
-}
-
-
-// ============================================================
-// HANDLE LOCAL NAVIGATION
-// ============================================================
-
-async function handleNavigation(
-    question
-) {
-
-    if (!currentTab?.id) {
-        return false;
-    }
-
-
-    const query =
-        cleanNavigationQuery(
-            question
-        );
-
-
-    console.log(
-        "POPUP: LOCAL NAVIGATION REQUEST:",
-        query
-    );
-
-
-    try {
-
-        const response =
-            await chrome.tabs.sendMessage(
-
-                currentTab.id,
-
-                {
-                    type:
-                        "LOCAL_NAVIGATE",
-
-                    query:
-                        query,
-
-                    focus:
-                        true,
-
-                    activate:
-                        false
-                }
-            );
-
-
-        console.log(
-            "POPUP: NAVIGATION RESULT",
-            response
-        );
-
-
-        if (
-            response?.success
-        ) {
-
-            showAnswer(
-                response.message ||
-                `I found "${query}" on the page and highlighted it.`
-            );
-
-
-            return true;
-        }
-
-
-        showAnswer(
-            response?.message ||
-            `I couldn't find "${query}" on this page.`
-        );
-
-
-        return true;
-
-    } catch (error) {
-
-        console.error(
-            "POPUP: NAVIGATION ERROR",
-            error
-        );
-
-
-        showAnswer(
-            `I couldn't navigate to "${query}".`
-        );
-
-
-        return true;
-    }
-}
-
-
-// ============================================================
-// SHOW ANSWER
-// ============================================================
-
-function showAnswer(
-    text
-) {
-
-    if (!answerArea) {
-        return;
-    }
-
-
-    answerText.textContent =
-        text || "No answer returned.";
-
-
-    answerArea.classList.add(
-        "show"
-    );
-}
-
-
-// ============================================================
-// ASK BACKEND
-// ============================================================
-
-async function askBackend(
-    question
-) {
-
-    if (!currentPageId) {
-
-        throw new Error(
-            "Please read the page first."
-        );
-    }
-
-
-    console.log(
-        "POPUP: ASKING BACKEND",
-        {
-            question,
-            page_id:
-                currentPageId
-        }
-    );
-
-
-    const response =
-        await fetch(
-            `${BACKEND_URL}/ask`,
-            {
-
-                method:
-                    "POST",
-
-                headers: {
-
-                    "Content-Type":
-                        "application/json"
-                },
-
-                body:
-                    JSON.stringify({
-
-                        question:
-                            question,
-
-                        page_id:
-                            currentPageId,
-
-                        top_k:
-                            5
-                    })
-            }
-        );
-
-
-    const result =
-        await response.json();
-
-
-    console.log(
-        "POPUP: /ask RESPONSE",
-        result
-    );
-
-
-    if (!response.ok) {
-
-        throw new Error(
-            result?.message ||
-            `Backend returned ${response.status}`
-        );
-    }
-
-
-    if (
-        result.success === false
-    ) {
-
-        throw new Error(
-            result.message ||
-            "The AI could not answer the question."
-        );
-    }
-
-
-    return result;
-}
-
-
-// ============================================================
-// ASK MENTOR
-// ============================================================
-
-async function askMentor() {
-
-    clearError();
-
-
-    if (
-        !pageRead ||
-        !currentPageId
-    ) {
-
-        showError(
-            "Read the page first."
-        );
-
-        return;
-    }
-
-
-    const question =
-        questionInput?.value.trim();
-
-
-    if (!question) {
-
-        showError(
-            "Please enter a question."
-        );
-
-        questionInput?.focus();
-
-        return;
-    }
-
-
-    if (askButton) {
-
-        askButton.disabled =
-            true;
-
-        askButton.textContent =
-            "Thinking...";
-    }
-
-
-    showAnswer(
-        "Analyzing the page..."
-    );
-
-
-    try {
-
-        // ----------------------------------------------------
-        // Navigation request?
-        // ----------------------------------------------------
-
-        if (
-            looksLikeNavigationRequest(
-                question
-            )
-        ) {
-
-            await handleNavigation(
-                question
-            );
-
-
-            return;
-        }
-
-
-        // ----------------------------------------------------
-        // Normal AI question
-        // ----------------------------------------------------
-
-        const result =
-            await askBackend(
-                question
-            );
-
-
-        showAnswer(
-            result.answer ||
-            "I couldn't find an answer on this page."
-        );
-
-    } catch (error) {
-
-        console.error(
-            "POPUP: ASK ERROR",
-            error
-        );
-
-
-        showAnswer(
-            "I couldn't answer that right now."
-        );
-
-
-        showError(
-            error?.message ||
-            "The AI request failed."
-        );
-
-    } finally {
-
-        if (askButton) {
-
-            askButton.disabled =
-                false;
-
-            askButton.textContent =
-                "Ask Mentor";
-        }
-    }
-}
-
-
-// ============================================================
-// INITIALIZE
+// INITIALIZATION
 // ============================================================
 
 async function initialize() {
+    checkBackendHealth();
+    await resolveActiveTab();
+    setupEventListeners();
+}
 
+async function checkBackendHealth() {
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-        currentTab =
-            await getCurrentTab();
+        const res = await fetch(`${BACKEND_URL}/health`, { signal: controller.signal });
+        clearTimeout(timeoutId);
 
+        if (res.ok) {
+            const data = await res.json();
+            connectionDot.className = "connection-dot connected";
+            if (data.scamshield_configured) {
+                connectionText.textContent = "Connected (ScamShield Active)";
+            } else {
+                connectionText.textContent = "Connected";
+            }
+        } else {
+            connectionDot.className = "connection-dot error";
+            connectionText.textContent = "Degraded";
+        }
+    } catch {
+        connectionDot.className = "connection-dot error";
+        connectionText.textContent = "Backend Offline";
+    }
+}
 
-        if (!currentTab?.id) {
-
-            setStatus(
-                false,
-                "No active tab"
-            );
-
+async function resolveActiveTab() {
+    try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tabs || !tabs[0]) {
+            showAlert("Could not access current browser tab.", "error");
             return;
         }
 
+        currentTab = tabs[0];
+        const url = currentTab.url || "";
 
-        if (
-            isRestrictedPage(
-                currentTab.url
-            )
-        ) {
+        try {
+            const parsed = new URL(url);
+            activePageTitle.textContent = currentTab.title || parsed.hostname;
+            activePageDomain.textContent = parsed.hostname;
 
-            setStatus(
-                false,
-                "Unavailable"
-            );
+            // Check if Gmail
+            if (parsed.hostname.endsWith("mail.google.com")) {
+                if (gmailSection) gmailSection.style.display = "flex";
+            }
+        } catch {
+            activePageTitle.textContent = currentTab.title || "Webpage";
+            activePageDomain.textContent = url.slice(0, 30);
+        }
 
-
-            readPageButton.disabled =
-                true;
-
-
-            readPageButton.textContent =
-                "Unavailable on this page";
-
-
+        if (isRestrictedUrl(url)) {
+            showAlert("Chrome restricts assistant extensions on internal pages. Open an ordinary website to read content.", "info");
+            btnReadPage.disabled = true;
             return;
         }
 
+        // Try detecting highlighted text on the active page
+        detectUserSelection();
 
-        setStatus(
-            true,
-            "Ready"
-        );
+    } catch (err) {
+        console.warn("Could not query active tab:", err);
+    }
+}
 
-
-        console.log(
-            "POPUP: Ready for",
-            currentTab.url
-        );
-
-    } catch (error) {
-
-        console.error(
-            "POPUP: INIT ERROR",
-            error
-        );
-
-
-        setStatus(
-            false,
-            "Error"
-        );
+async function detectUserSelection() {
+    if (!currentTab?.id) return;
+    try {
+        const resp = await chrome.tabs.sendMessage(currentTab.id, { type: "GET_SELECTION" });
+        if (resp && resp.has_selection && resp.selection) {
+            currentSelection = resp.selection.trim();
+            const preview = currentSelection.length > 50 ? `${currentSelection.slice(0, 50)}...` : currentSelection;
+            selectionPreview.textContent = `Selection (${currentSelection.length}c): "${preview}"`;
+            selectionBanner.style.display = "flex";
+        } else {
+            selectionBanner.style.display = "none";
+        }
+    } catch {
+        // Content script might not be injected yet or not permitted
+        selectionBanner.style.display = "none";
     }
 }
 
 
 // ============================================================
-// EVENTS
+// READ CURRENT WEBPAGE
 // ============================================================
 
-readPageButton?.addEventListener(
-    "click",
-    readCurrentPage
-);
+async function readCurrentPage() {
+    if (!currentTab?.id || isReadingPage) return;
 
-
-askButton?.addEventListener(
-    "click",
-    askMentor
-);
-
-
-// Ctrl + Enter / Cmd + Enter
-
-questionInput?.addEventListener(
-    "keydown",
-    event => {
-
-        if (
-            event.key === "Enter" &&
-            (event.ctrlKey ||
-             event.metaKey)
-        ) {
-
-            event.preventDefault();
-
-            askMentor();
-        }
-    }
-);
-
-
-// ============================================================
-// START
-// ============================================================
-
-initialize();
-// SCAMSHIELD_EMAIL_ANALYSIS_HANDLER
-const scamShieldEmailButton = document.getElementById("scamShieldEmailButton");
-const scamShieldEmailStatus = document.getElementById("scamShieldEmailStatus");
-const scamShieldEmailResults = document.getElementById("scamShieldEmailResults");
-
-scamShieldEmailButton?.addEventListener("click", async () => {
-    scamShieldEmailButton.disabled = true;
-    scamShieldEmailStatus.textContent = "Reading the open Gmail message...";
-    scamShieldEmailResults.hidden = true;
-    scamShieldEmailResults.replaceChildren();
+    clearAlert();
+    isReadingPage = true;
+    btnReadPage.disabled = true;
+    readPageSpinner.style.display = "inline-block";
+    readPageText.textContent = "Reading...";
 
     try {
-        const tab = await getCurrentTab();
-
-        if (!tab?.id || !tab.url?.startsWith("https://mail.google.com/")) {
-            throw new Error("Open Gmail and select an individual email first.");
+        // 1. Request page extraction from content script
+        let pageData = null;
+        try {
+            pageData = await chrome.tabs.sendMessage(currentTab.id, { type: "GET_PAGE_CONTENT" });
+        } catch (scriptErr) {
+            // Try injecting if needed
+            throw new Error("Could not connect to page. Please refresh the page and try again.");
         }
 
-        const email = await chrome.tabs.sendMessage(tab.id, {
+        if (!pageData || pageData.error) {
+            throw new Error(pageData?.error || "Could not extract page text.");
+        }
+
+        currentPageData = pageData;
+        const pageId = `page_${Date.now()}`;
+        currentPageId = pageId;
+
+        // 2. Transmit structured document to backend
+        const ingestPayload = {
+            page_id: pageId,
+            title: pageData.title || currentTab.title || "Webpage",
+            url: pageData.url || currentTab.url || "",
+            hostname: activePageDomain.textContent || "",
+            description: pageData.description || "",
+            headings: (pageData.chunks || []).map(c => c.heading).filter(Boolean),
+            paragraphs: [],
+            chunks: pageData.chunks || [],
+            links: pageData.links || [],
+            images: pageData.images || [],
+            interactiveElements: pageData.interactiveElements || [],
+            content: pageData.text || "",
+            wordCount: pageData.stats?.characters ? Math.round(pageData.stats.characters / 5) : 0
+        };
+
+        const res = await fetch(`${BACKEND_URL}/page/ingest`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(ingestPayload)
+        });
+
+        if (!res.ok) {
+            throw new Error(`Backend ingest failed (${res.status})`);
+        }
+
+        const ingestResult = await res.json();
+
+        // 3. Populate Insights Tab
+        updateInsightsTab(ingestPayload);
+
+        // 4. Populate Links Tab
+        scanAndRenderLinks(ingestPayload.links, ingestPayload.url);
+
+        readPageText.textContent = "Page Ready";
+        showAlert("Page successfully understood and indexed!", "info");
+        setTimeout(clearAlert, 2500);
+
+    } catch (err) {
+        console.error("Read page error:", err);
+        showAlert(err.message || "Failed to read webpage.", "error");
+        readPageText.textContent = "Retry Read";
+    } finally {
+        isReadingPage = false;
+        btnReadPage.disabled = false;
+        readPageSpinner.style.display = "none";
+    }
+}
+
+function updateInsightsTab(data) {
+    const wordCount = data.wordCount || 0;
+    insightWordCount.textContent = wordCount.toLocaleString();
+    insightReadTime.textContent = `${Math.max(1, Math.round(wordCount / 200))} min`;
+    insightChunks.textContent = (data.chunks || []).length;
+    insightLinks.textContent = (data.links || []).length;
+
+    headingsOutlineContainer.innerHTML = "";
+    const uniqueHeadings = [...new Set((data.headings || []).filter(Boolean))];
+
+    if (!uniqueHeadings.length) {
+        headingsOutlineContainer.innerHTML = '<div style="font-size: 11px; color: var(--muted); text-align: center; padding: 12px;">No headings extracted.</div>';
+        return;
+    }
+
+    uniqueHeadings.slice(0, 15).forEach((h, idx) => {
+        const item = document.createElement("div");
+        item.className = "outline-item";
+        item.textContent = `${idx + 1}. ${h}`;
+        headingsOutlineContainer.appendChild(item);
+    });
+}
+
+
+// ============================================================
+// ASKING MENTOR & INTELLIGENCE
+// ============================================================
+
+async function askMentor(overridePrompt = "", mode = "auto") {
+    const query = (overridePrompt || questionInput.value).trim();
+    if (!query && !currentSelection) {
+        showAlert("Please enter a question or click a prompt chip.", "error");
+        return;
+    }
+
+    if (isAsking) return;
+    clearAlert();
+    isAsking = true;
+    btnAskMentor.disabled = true;
+    askSpinner.style.display = "inline-block";
+    askBtnText.textContent = "Thinking...";
+
+    try {
+        const payload = {
+            query: query,
+            page_id: currentPageId || "",
+            selection_text: currentSelection || "",
+            mode: mode
+        };
+
+        const res = await fetch(`${BACKEND_URL}/assistant/query`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            throw new Error(`Assistant query failed (${res.status})`);
+        }
+
+        const data = await res.json();
+        renderAnswer(data);
+
+    } catch (err) {
+        console.error("Ask mentor error:", err);
+        showAlert(err.message || "Could not retrieve answer from assistant.", "error");
+    } finally {
+        isAsking = false;
+        btnAskMentor.disabled = false;
+        askSpinner.style.display = "none";
+        askBtnText.textContent = "Ask Mentor";
+    }
+}
+
+function renderAnswer(data) {
+    answerContainer.style.display = "flex";
+
+    const toolName = (data.tool || "Grounded Q&A").replace(/_/g, " ").toUpperCase();
+    const provider = data.provider === "groq" ? "Groq LLM" : "Deterministic Engine";
+    answerProviderBadge.textContent = `${toolName} (${provider})`;
+
+    const text = data.text_response || data.answer || "No response provided.";
+    answerContent.textContent = text;
+
+    // Render sources if available
+    sourcesArea.innerHTML = "";
+    const sources = data.sources || [];
+    if (sources.length > 0) {
+        sourcesArea.style.display = "flex";
+        const label = document.createElement("div");
+        label.style.fontSize = "10px";
+        label.style.fontWeight = "bold";
+        label.style.color = "var(--muted)";
+        label.textContent = "VERIFIED SOURCES:";
+        sourcesArea.appendChild(label);
+
+        sources.slice(0, 3).forEach(s => {
+            const pill = document.createElement("div");
+            pill.className = "source-pill";
+            pill.innerHTML = `<strong>${escapeHtml(s.heading || "Page Section")}</strong>: ${escapeHtml(s.text ? s.text.slice(0, 140) + "..." : "")}`;
+            sourcesArea.appendChild(pill);
+        });
+    } else {
+        sourcesArea.style.display = "none";
+    }
+}
+
+
+// ============================================================
+// SECURITY AUDITING
+// ============================================================
+
+async function auditPageSecurity() {
+    if (!currentPageId) {
+        showAlert("Please read the page first before auditing security.", "info");
+        return;
+    }
+
+    btnAuditPage.disabled = true;
+    auditPageSpinner.style.display = "inline-block";
+
+    try {
+        const res = await fetch(`${BACKEND_URL}/security/analyze-page`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ page_id: currentPageId })
+        });
+
+        if (!res.ok) {
+            throw new Error(`Security audit failed (${res.status})`);
+        }
+
+        const data = await res.json();
+        renderSecurityVerdict(data);
+
+    } catch (err) {
+        showAlert(err.message || "Failed to audit page security.", "error");
+    } finally {
+        btnAuditPage.disabled = false;
+        auditPageSpinner.style.display = "none";
+    }
+}
+
+async function auditSelectionSecurity(textToAudit = "") {
+    const text = (textToAudit || currentSelection).trim();
+    if (!text) {
+        showAlert("No text selected to audit. Highlight text on the page first.", "error");
+        return;
+    }
+
+    btnAuditSelectionDirect.disabled = true;
+    auditSelSpinner.style.display = "inline-block";
+
+    try {
+        const res = await fetch(`${BACKEND_URL}/security/analyze-text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: text, context: "user_selection" })
+        });
+
+        if (!res.ok) {
+            throw new Error(`Selection analysis failed (${res.status})`);
+        }
+
+        const data = await res.json();
+        renderSecurityVerdict({
+            risk_level: data.risk_level,
+            risk_score: data.risk_score,
+            findings: data.reasons,
+            text_analysis: data,
+            disclaimer: data.disclaimer
+        });
+
+    } catch (err) {
+        showAlert(err.message || "Failed to audit selected text.", "error");
+    } finally {
+        btnAuditSelectionDirect.disabled = false;
+        auditSelSpinner.style.display = "none";
+    }
+}
+
+async function scanOpenGmailEmail() {
+    if (!currentTab?.id) return;
+
+    btnScanGmail.disabled = true;
+    gmailSpinner.style.display = "inline-block";
+    gmailBtnText.textContent = "Extracting Email...";
+
+    try {
+        const email = await chrome.tabs.sendMessage(currentTab.id, {
             type: "SCAMSHIELD_GET_GMAIL_EMAIL"
         });
 
         if (!email?.success || !email.message) {
-            throw new Error(email?.message || "Could not extract the email.");
+            throw new Error(email?.message || "Please open an individual email in Gmail first.");
         }
 
-        scamShieldEmailStatus.textContent = "Analyzing email tactics...";
+        gmailBtnText.textContent = "Analyzing Tactics...";
 
+        // Use the preserved ScamShield endpoint
         const response = await fetch(`${BACKEND_URL}/scamshield/analyze-text`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message: email.message })
         });
 
-        const data = await response.json();
-
         if (!response.ok) {
-            throw new Error(data.detail || "The analysis request failed.");
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.detail || "ScamShield service request failed.");
         }
 
-        const heading = document.createElement("h3");
-        heading.textContent = `Tactic analysis: ${email.subject || "Opened email"}`;
-        scamShieldEmailResults.appendChild(heading);
-// Final verdict based on available tactic predictions.
-// This is a risk assessment, not proof of fraud or legitimacy.
-const availableResults = (data.results || []).filter(
-    item => item.available === true && typeof item.detected === "boolean"
-);
-const detectedResults = availableResults.filter(item => item.detected);
-const verdictCard = document.createElement("div");
-verdictCard.className = "verdict-card";
+        const data = await response.json();
+        const detected = data.detected_tactics || [];
+        const riskLevel = detected.length >= 2 ? "High Risk" : (detected.length === 1 ? "Caution / Suspicious" : "Low Risk");
+        const riskScore = Math.min(detected.length * 35, 100);
 
-const verdictTitle = document.createElement("span");
-verdictTitle.className = "verdict-title";
+        renderSecurityVerdict({
+            risk_level: riskLevel,
+            risk_score: riskScore,
+            findings: detected.length > 0
+                ? detected.map(t => `Detected manipulation tactic: ${t}`)
+                : ["No high-confidence manipulation tactics flagged by the ScamShield baseline model."],
+            text_analysis: { scamshield: data },
+            disclaimer: data.disclaimer || "Experimental ScamShield tactic analysis only."
+        });
 
-const verdictDetail = document.createElement("span");
-verdictDetail.className = "verdict-detail";
-
-if (availableResults.length === 0) {
-    verdictTitle.textContent = "Inconclusive";
-    verdictTitle.style.color = "#b45309";
-    verdictDetail.textContent =
-        "No usable tactic predictions are available. Do not rely on this result.";
-} else if (detectedResults.length >= 2) {
-    verdictTitle.textContent = "Likely Suspicious";
-    verdictTitle.style.color = "#b91c1c";
-    verdictDetail.textContent =
-        `${detectedResults.length} suspicious tactic signal(s) detected. Treat this email cautiously and verify claims independently.`;
-} else if (detectedResults.length === 1) {
-    verdictTitle.textContent = "Needs Caution";
-    verdictTitle.style.color = "#b45309";
-    verdictDetail.textContent =
-        "A suspicious tactic signal was detected. Review the email and verify the sender before taking action.";
-} else if (availableResults.length < (data.results || []).length) {
-    verdictTitle.textContent = "Inconclusive";
-    verdictTitle.style.color = "#b45309";
-    verdictDetail.textContent =
-        "No signals were detected by the available checks, but some checks were unavailable. This does not establish that the email is genuine.";
-} else {
-    verdictTitle.textContent = "No Strong Scam Signals";
-    verdictTitle.style.color = "#15803d";
-    verdictDetail.textContent =
-        "The available tactic checks found no strong signals. This does not guarantee that the email is genuine.";
+    } catch (err) {
+        showAlert(err.message || "Failed to analyze Gmail message.", "error");
+    } finally {
+        btnScanGmail.disabled = false;
+        gmailSpinner.style.display = "none";
+        gmailBtnText.textContent = "Scan Open Email";
+    }
 }
 
-verdictCard.append(verdictTitle, verdictDetail);
-scamShieldEmailResults.appendChild(verdictCard);
+function renderSecurityVerdict(audit) {
+    securityVerdictArea.style.display = "flex";
 
-        for (const item of data.results || []) {
-            const row = document.createElement("div");
-            row.className = "tactic-row"; row.style.cssText = "padding:8px 0;border-bottom:1px solid #e5e7eb";
+    const risk = (audit.risk_level || "Low Risk").toLowerCase();
+    verdictBanner.className = "verdict-banner";
 
-            const name = document.createElement("strong");
-            name.textContent = String(item.tactic).replaceAll("_", " ");
-            row.appendChild(name);
+    if (risk.includes("high")) {
+        verdictBanner.classList.add("high");
+        verdictTitle.textContent = "High Risk Detected";
+        verdictSubtitle.textContent = "Significant risk indicators found";
+        securityStatusTag.className = "badge-risk high";
+        securityStatusTag.textContent = "High Risk";
+    } else if (risk.includes("caution") || risk.includes("suspicious") || risk.includes("medium")) {
+        verdictBanner.classList.add("caution");
+        verdictTitle.textContent = "Caution / Suspicious";
+        verdictSubtitle.textContent = "Potentially deceptive indicators flagged";
+        securityStatusTag.className = "badge-risk medium";
+        securityStatusTag.textContent = "Caution";
+    } else {
+        verdictBanner.classList.add("low");
+        verdictTitle.textContent = "Low Risk";
+        verdictSubtitle.textContent = "No prominent deceptive patterns identified";
+        securityStatusTag.className = "badge-risk low";
+        securityStatusTag.textContent = "Low Risk";
+    }
 
-            const detail = document.createElement("div");
-            if (item.available === false || item.detected === null) {
-                detail.textContent = "Unavailable - this tactic cannot currently be assessed.";
-            } else {
-                const percent = Number.isFinite(item.score)
-                    ? ` (model score: ${(item.score * 100).toFixed(1)}%)`
-                    : "";
-                detail.textContent = `${item.detected ? "Potential signal detected" : "Not detected"}${percent}`;
-            }
+    verdictScore.textContent = `${audit.risk_score || 0}/100`;
 
-            row.appendChild(detail);
-            scamShieldEmailResults.appendChild(row);
+    // Render findings
+    findingsList.innerHTML = "";
+    const findings = audit.findings || [];
+    findings.forEach(f => {
+        const item = document.createElement("div");
+        item.className = "finding-item";
+        item.innerHTML = `<span class="finding-bullet">&#8226;</span><span>${escapeHtml(f)}</span>`;
+        findingsList.appendChild(item);
+    });
+
+    // Render ScamShield tactics if available
+    const scamshieldData = audit.text_analysis?.scamshield;
+    if (scamshieldData && scamshieldData.results) {
+        scamshieldSection.style.display = "block";
+        tacticsGrid.innerHTML = "";
+        scamshieldData.results.forEach(t => {
+            const tag = document.createElement("div");
+            tag.className = `tactic-tag ${t.detected ? "detected" : ""}`;
+            tag.innerHTML = `<span>${escapeHtml(t.tactic)}</span><span>${t.detected ? "&#9888; Yes" : "&#10003; No"}</span>`;
+            tacticsGrid.appendChild(tag);
+        });
+    } else {
+        scamshieldSection.style.display = "none";
+    }
+}
+
+
+// ============================================================
+// LINKS INSPECTION
+// ============================================================
+
+async function scanAndRenderLinks(links = [], pageUrl = "") {
+    if (!links || !links.length) {
+        if (currentPageData?.links) {
+            links = currentPageData.links;
+            pageUrl = currentPageData.url;
+        }
+    }
+
+    if (!links || !links.length) {
+        linksListContainer.innerHTML = '<div style="font-size: 11px; color: var(--muted); text-align: center; padding: 16px;">No links found on this page.</div>';
+        return;
+    }
+
+    try {
+        const res = await fetch(`${BACKEND_URL}/scan-links`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ links: links.slice(0, 100), page_id: currentPageId })
+        });
+
+        if (!res.ok) throw new Error("Link scan request failed");
+
+        const data = await res.json();
+        const summary = data.summary || {};
+
+        linkTotalCount.textContent = summary.total || 0;
+        linkSafeCount.textContent = summary.low || 0;
+        linkSuspiciousCount.textContent = summary.medium || 0;
+        linkRiskyCount.textContent = summary.high || 0;
+
+        renderLinksList(data.results || []);
+
+    } catch (err) {
+        console.warn("Scan links fallback:", err);
+    }
+}
+
+function renderLinksList(results) {
+    linksListContainer.innerHTML = "";
+
+    if (!results.length) {
+        linksListContainer.innerHTML = '<div style="font-size: 11px; color: var(--muted); text-align: center; padding: 16px;">No links to display.</div>';
+        return;
+    }
+
+    results.slice(0, 40).forEach(link => {
+        const row = document.createElement("div");
+        row.className = "link-row";
+
+        const riskClass = (link.risk || "low").toLowerCase();
+        const top = document.createElement("div");
+        top.className = "link-row-top";
+
+        const label = document.createElement("span");
+        label.className = "link-label";
+        label.textContent = link.text || link.url || "Untitled link";
+
+        const badge = document.createElement("span");
+        badge.className = `badge-risk ${riskClass}`;
+        badge.textContent = link.risk || "Low";
+
+        top.appendChild(label);
+        top.appendChild(badge);
+        row.appendChild(top);
+
+        const urlDiv = document.createElement("div");
+        urlDiv.className = "link-url";
+        urlDiv.textContent = link.url;
+        row.appendChild(urlDiv);
+
+        if (link.reasons && link.reasons.length && link.risk !== "Low") {
+            const reasonDiv = document.createElement("div");
+            reasonDiv.className = "link-reason";
+            reasonDiv.textContent = link.reasons[0];
+            row.appendChild(reasonDiv);
         }
 
-        const disclaimer = document.createElement("p");
-        disclaimer.style.cssText = "font-size:12px;color:#6b7280;margin-top:10px";
-        disclaimer.textContent = data.disclaimer || "Experimental model output; not a definitive scam verdict.";
-        scamShieldEmailResults.appendChild(disclaimer);
+        linksListContainer.appendChild(row);
+    });
+}
 
-        scamShieldEmailResults.hidden = false;
-        scamShieldEmailStatus.textContent = "Analysis complete.";
-    } catch (error) {
-        scamShieldEmailStatus.textContent = error?.message || "Email analysis failed.";
-    } finally {
-        scamShieldEmailButton.disabled = false;
+async function checkCustomUrl() {
+    const url = customLinkInput.value.trim();
+    if (!url) {
+        showAlert("Enter a URL to inspect.", "error");
+        return;
     }
-});
+
+    try {
+        const res = await fetch(`${BACKEND_URL}/hover-check`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: url, page_url: currentTab?.url || "" })
+        });
+
+        if (!res.ok) throw new Error("Hover check failed");
+
+        const data = await res.json();
+        const result = data.result || {};
+
+        showAlert(`Link Inspection for ${result.hostname || url}: Risk is ${result.risk}. ${result.reasons ? result.reasons.join(", ") : ""}`, result.risk === "High" ? "error" : "info");
+
+    } catch (err) {
+        showAlert("Failed to inspect custom link.", "error");
+    }
+}
 
 
+// ============================================================
+// EVENT LISTENERS
+// ============================================================
+
+function setupEventListeners() {
+    // Tab switching
+    navTabs.forEach(tab => {
+        tab.addEventListener("click", () => {
+            const panelId = tab.getAttribute("data-tab");
+            switchTab(panelId);
+        });
+    });
+
+    // Read Page
+    btnReadPage?.addEventListener("click", readCurrentPage);
+
+    // Ask Mentor
+    btnAskMentor?.addEventListener("click", () => askMentor());
+
+    // Enter key support for textarea
+    questionInput?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            askMentor();
+        }
+    });
+
+    // Quick Prompt Chips
+    promptChips.forEach(chip => {
+        chip.addEventListener("click", () => {
+            const prompt = chip.getAttribute("data-prompt");
+            if (prompt) {
+                questionInput.value = prompt;
+                askMentor(prompt);
+            }
+        });
+    });
+
+    // Selection Banner Actions
+    btnExplainSelection?.addEventListener("click", () => {
+        switchTab("panelAsk");
+        questionInput.value = `Explain this selection: "${currentSelection.slice(0, 80)}"`;
+        askMentor(`Explain this highlighted text in simple plain language: "${currentSelection}"`, "explain");
+    });
+
+    btnAuditSelection?.addEventListener("click", () => {
+        switchTab("panelSecurity");
+        auditSelectionSecurity(currentSelection);
+    });
+
+    btnAuditSelectionDirect?.addEventListener("click", () => {
+        auditSelectionSecurity();
+    });
+
+    // Security Tab Actions
+    btnAuditPage?.addEventListener("click", auditPageSecurity);
+    btnScanGmail?.addEventListener("click", scanOpenGmailEmail);
+
+    // Links Tab Actions
+    btnRescanLinks?.addEventListener("click", () => scanAndRenderLinks());
+    btnCheckCustomLink?.addEventListener("click", checkCustomUrl);
+    customLinkInput?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            checkCustomUrl();
+        }
+    });
+
+    // Insights Direct Summary Action
+    btnSummaryDirect?.addEventListener("click", () => {
+        switchTab("panelAsk");
+        questionInput.value = "Summarize this page";
+        askMentor("Summarize this page in 3 concise bullet points", "summary");
+    });
+
+    // Copy to clipboard
+    btnCopyAnswer?.addEventListener("click", () => {
+        const text = answerContent.textContent;
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+            const orig = btnCopyAnswer.textContent;
+            btnCopyAnswer.textContent = "Copied!";
+            setTimeout(() => { btnCopyAnswer.textContent = orig; }, 1500);
+        });
+    });
+}
+
+// Start
+document.addEventListener("DOMContentLoaded", initialize);
