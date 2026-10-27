@@ -47,6 +47,10 @@ OUTLINE_PATTERNS = [
     r"\b(?:outline|table of contents|structure|headings|page info|page stats)\b"
 ]
 
+COMPARE_PATTERNS = [
+    r"\b(?:compare|comparison|cross-check|verify against page|fact check|does the page confirm)\b"
+]
+
 
 def classify_intent(query: str, has_selection: bool = False, mode: str = "auto") -> str:
     """Deterministic intent classifier."""
@@ -63,8 +67,13 @@ def classify_intent(query: str, has_selection: bool = False, mode: str = "auto")
         return "extract_page_information"
     if mode in ("explain", "explain_selection") and has_selection:
         return "explain_selection"
+    if mode in ("compare", "compare_content"):
+        return "compare_provided_content"
 
     # Pattern matching
+    if any(re.search(pat, q) for pat in COMPARE_PATTERNS) and has_selection:
+        return "compare_provided_content"
+
     if any(re.search(pat, q) for pat in SECURITY_PATTERNS):
         return "analyze_selected_text" if has_selection else "analyze_page_security"
 
@@ -272,7 +281,88 @@ Provide:
             "provider": "deterministic_fallback"
         }
 
-    # 6. TOOL: summarize_page
+    # 6. TOOL: compare_provided_content
+    if intent == "compare_provided_content":
+        target_claim = clean_selection or clean_query
+        if not page or not page.get("chunks"):
+            return {
+                "success": False,
+                "tool": intent,
+                "error": "No page content available to compare against.",
+                "text_response": "Please read the webpage first to cross-reference your selection."
+            }
+
+        chunks = page.get("chunks", [])
+        cmp_chunks = []
+        try:
+            sel_vec = embed_text(target_claim[:500])
+            hits = search(page.get("page_id", ""), sel_vec, top_k=4)
+            for hit in hits:
+                c = hit.get("chunk")
+                if isinstance(c, dict) and c.get("text"):
+                    cmp_chunks.append(c)
+        except Exception:
+            pass
+
+        if not cmp_chunks:
+            cmp_chunks = chunks[:4]
+
+        safe_ctx = build_safe_context(cmp_chunks)
+
+        if groq_api_key:
+            user_prompt = f"""Compare the user's provided snippet or claim against the webpage context.
+
+PROVIDED SNIPPET / CLAIM:
+\"\"\"{target_claim}\"\"\"
+
+WEBPAGE CONTEXT:
+{safe_ctx}
+
+Analyze:
+1. Verdict: Is the claim Supported, Contradicted, or Not Mentioned in the page context?
+2. Evidence: Quote or cite the relevant part of the page.
+3. Differences: Point out any nuances, modifications, or omitted details.
+"""
+            try:
+                answer = await call_groq_llm(
+                    groq_api_key, groq_model, SYSTEM_PROMPT_GROUNDED, user_prompt, temperature=0.1
+                )
+                return {
+                    "success": True,
+                    "tool": intent,
+                    "intent": intent,
+                    "text_response": answer,
+                    "sources": [{"heading": c.get("heading", ""), "text": c.get("text", "")[:300]} for c in cmp_chunks],
+                    "provider": "groq"
+                }
+            except Exception as e:
+                print(f"[intent_router] Groq compare error: {e}")
+
+        # Deterministic comparison fallback
+        matching_lines = []
+        words = set(re.findall(r"\w{4,}", target_claim.lower()))
+        for c in cmp_chunks:
+            c_words = set(re.findall(r"\w{4,}", c.get("text", "").lower()))
+            overlap = words.intersection(c_words)
+            if len(overlap) >= 2:
+                matching_lines.append(f"Section **{c.get('heading', 'Page')}**: shares terms ({', '.join(list(overlap)[:4])})")
+
+        resp_text = f"Compared selection against {len(cmp_chunks)} relevant sections on this page.\n"
+        if matching_lines:
+            resp_text += "\nRelevant overlap found:\n" + "\n".join(f"- {m}" for m in matching_lines)
+        else:
+            resp_text += "\nNo strong textual overlap found between the provided selection and this page's content."
+
+        return {
+            "success": True,
+            "tool": intent,
+            "intent": intent,
+            "text_response": resp_text,
+            "sources": [{"heading": c.get("heading", ""), "text": c.get("text", "")[:300]} for c in cmp_chunks],
+            "provider": "deterministic_comparison"
+        }
+
+    # 7. TOOL: summarize_page
     if intent == "summarize_page":
         if not page or not page.get("chunks"):
             return {

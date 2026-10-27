@@ -638,6 +638,7 @@ def health():
             "analyze_selected_text",
             "analyze_page_security",
             "inspect_links",
+            "compare_provided_content",
             "scamshield_fraud_tactics"
         ]
     }

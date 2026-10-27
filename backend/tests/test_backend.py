@@ -40,6 +40,9 @@ def test_intent_classification():
     # Page outline
     assert classify_intent("Show me the page outline and structure") == "extract_page_information"
 
+    # Comparison
+    assert classify_intent("Compare this claim with the page", has_selection=True) == "compare_provided_content"
+
     # Default Q&A
     assert classify_intent("What is the refund policy?") == "answer_page_question"
 
@@ -227,3 +230,50 @@ def test_assistant_query_endpoint(client):
     data = resp.json()
     assert data["success"] is True
     assert "text_response" in data
+
+
+def test_compare_content_tool(client):
+    # Ingest a page first
+    page_data = {
+        "page_id": "compare-test-page",
+        "title": "Return Policy Page",
+        "url": "https://store.example.com/returns",
+        "chunks": [
+            {"id": 1, "heading": "Policy", "text": "Items can be returned within 30 days of purchase for a full refund."},
+            {"id": 2, "heading": "Exceptions", "text": "Final sale items and gift cards cannot be returned."}
+        ]
+    }
+    r = client.post("/page/ingest", json=page_data)
+    assert r.status_code == 200
+
+    resp = client.post("/assistant/query", json={
+        "query": "Compare this with the return policy",
+        "page_id": "compare-test-page",
+        "selection_text": "The store offers returns within 30 days for a full refund.",
+        "mode": "auto"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["tool"] == "compare_provided_content"
+    assert "text_response" in data
+
+
+def test_edge_cases_and_failures(client):
+    # Nonexistent page 404
+    resp = client.post("/security/analyze-page", json={"page_id": "missing-page-id-999"})
+    assert resp.status_code == 404
+
+    # Blank text validation 422
+    resp = client.post("/security/analyze-text", json={"text": "   "})
+    assert resp.status_code == 422
+
+    # Excessively long text input validation 422 (>15000 chars)
+    resp = client.post("/security/analyze-text", json={"text": "A" * 20000})
+    assert resp.status_code == 422
+
+    # Hover-check on empty or malformed URL
+    resp = client.post("/hover-check", json={"url": ""})
+    assert resp.status_code == 200
+    assert resp.json()["success"] is False
+

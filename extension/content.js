@@ -4331,7 +4331,13 @@ if (S.hoverEnabled) {
 
       if (t === "GET_SELECTION") {
         try {
-          const sel = window.getSelection() ? window.getSelection().toString().trim() : "";
+          let sel = window.getSelection() ? window.getSelection().toString().trim() : "";
+          if (!sel && document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA")) {
+            const el = document.activeElement;
+            if (typeof el.selectionStart === "number" && typeof el.selectionEnd === "number" && el.selectionStart !== el.selectionEnd) {
+              sel = el.value.substring(el.selectionStart, el.selectionEnd).trim();
+            }
+          }
           send({
             success: true,
             has_selection: Boolean(sel),

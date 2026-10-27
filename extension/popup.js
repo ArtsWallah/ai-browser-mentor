@@ -11,6 +11,8 @@ let currentPageData = null;
 let currentSelection = "";
 let isReadingPage = false;
 let isAsking = false;
+let allScannedLinks = [];
+let currentLinkFilter = "all";
 
 // DOM Elements
 const connectionDot = document.getElementById("connectionDot");
@@ -110,12 +112,16 @@ function switchTab(targetPanelId) {
 
 function isRestrictedUrl(url) {
     if (!url) return true;
+    const lower = url.toLowerCase();
     return (
-        url.startsWith("chrome://") ||
-        url.startsWith("chrome-extension://") ||
-        url.startsWith("edge://") ||
-        url.startsWith("about:") ||
-        url.startsWith("view-source:")
+        lower.startsWith("chrome://") ||
+        lower.startsWith("chrome-extension://") ||
+        lower.startsWith("edge://") ||
+        lower.startsWith("about:") ||
+        lower.startsWith("view-source:") ||
+        lower.startsWith("file://") ||
+        lower.includes("chromewebstore.google.com") ||
+        lower.includes("chrome.google.com/webstore")
     );
 }
 
@@ -629,22 +635,31 @@ async function scanAndRenderLinks(links = [], pageUrl = "") {
         linkSuspiciousCount.textContent = summary.medium || 0;
         linkRiskyCount.textContent = summary.high || 0;
 
-        renderLinksList(data.results || []);
+        allScannedLinks = data.results || [];
+        renderLinksList();
 
     } catch (err) {
         console.warn("Scan links fallback:", err);
     }
 }
 
-function renderLinksList(results) {
+function renderLinksList(results = null) {
     linksListContainer.innerHTML = "";
+    const sourceList = results !== null ? results : allScannedLinks;
 
-    if (!results.length) {
-        linksListContainer.innerHTML = '<div style="font-size: 11px; color: var(--muted); text-align: center; padding: 16px;">No links to display.</div>';
+    let filtered = sourceList;
+    if (currentLinkFilter === "risky") {
+        filtered = sourceList.filter(l => l.risk === "High" || l.risk === "Medium");
+    } else if (currentLinkFilter === "safe") {
+        filtered = sourceList.filter(l => l.risk === "Low");
+    }
+
+    if (!filtered.length) {
+        linksListContainer.innerHTML = `<div style="font-size: 11px; color: var(--muted); text-align: center; padding: 16px;">No ${currentLinkFilter === "all" ? "" : currentLinkFilter} links to display.</div>`;
         return;
     }
 
-    results.slice(0, 40).forEach(link => {
+    filtered.slice(0, 50).forEach(link => {
         const row = document.createElement("div");
         row.className = "link-row";
 
@@ -773,6 +788,20 @@ function setupEventListeners() {
             e.preventDefault();
             checkCustomUrl();
         }
+    });
+
+    // Link Filters
+    document.getElementById("filterLinksAll")?.addEventListener("click", () => {
+        currentLinkFilter = "all";
+        renderLinksList();
+    });
+    document.getElementById("filterLinksRisky")?.addEventListener("click", () => {
+        currentLinkFilter = "risky";
+        renderLinksList();
+    });
+    document.getElementById("filterLinksSafe")?.addEventListener("click", () => {
+        currentLinkFilter = "safe";
+        renderLinksList();
     });
 
     // Insights Direct Summary Action
