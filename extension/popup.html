@@ -125,6 +125,51 @@
             color: var(--muted);
         }
 
+        .privacy-pill {
+            display: inline-flex;
+            align-items: center;
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 2px 6px;
+        }
+
+        .privacy-select {
+            background: transparent;
+            color: var(--text);
+            border: none;
+            font-size: 11px;
+            font-weight: 600;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .privacy-select option {
+            background: var(--surface);
+            color: var(--text);
+        }
+
+        .model-status-strip {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 5px 10px;
+            background: rgba(161, 177, 213, 0.05);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .model-status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-weight: 600;
+            color: var(--cyan);
+            font-size: 10px;
+        }
+
         .connection-dot {
             width: 7px;
             height: 7px;
@@ -1355,11 +1400,26 @@
                     <div class="subtitle">Universal Browser Assistant</div>
                 </div>
             </div>
-            <div class="connection-pill" id="connectionPill" title="Backend Server Status">
-                <span class="connection-dot" id="connectionDot"></span>
-                <span id="connectionText">Checking...</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div class="privacy-pill" title="Execution & Privacy Policy: Hybrid (Auto), Local only (Prohibits remote models), or Cloud">
+                    <select id="privacyModeSelect" class="privacy-select" aria-label="Privacy Mode">
+                        <option value="hybrid" selected>⚡ Hybrid</option>
+                        <option value="local_only">🔒 Local only</option>
+                        <option value="cloud">☁️ Cloud</option>
+                    </select>
+                </div>
+                <div class="connection-pill" id="connectionPill" title="Backend Server Status">
+                    <span class="connection-dot" id="connectionDot"></span>
+                    <span id="connectionText">Checking...</span>
+                </div>
             </div>
         </header>
+
+        <!-- ACTIVE MODEL & PRIVACY STATUS STRIP -->
+        <div class="model-status-strip" id="modelStatusStrip">
+            <span id="modelStatusNotice">Privacy: <strong>Hybrid</strong> &bull; Local heuristics & cloud LLM</span>
+            <span class="model-status-badge" id="activeProviderBadge">&#128737; Local Guardrails</span>
+        </div>
 
         <!-- PAGE CONTEXT STRIP -->
         <div class="page-strip" id="pageStrip">

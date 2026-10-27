@@ -15,6 +15,13 @@ from app.services.page_intelligence import (
 )
 from app.services.embedding_service import embed_text
 from app.services.vector_store import search
+from app.services.hybrid_router import (
+    route_llm_request,
+    normalize_privacy_mode,
+    PRIVACY_LOCAL_ONLY,
+    PRIVACY_HYBRID,
+    PRIVACY_CLOUD
+)
 
 # Prompts and LLM guardrails
 SYSTEM_PROMPT_GROUNDED = """You are AI Browser Mentor, a universal browser assistant.
@@ -232,16 +239,18 @@ async def execute_command(
     intent_override: str = "auto",
     page_url: str = "",
     page_title: str = "",
+    privacy_mode: str = "hybrid",
     groq_api_key: str = "",
     groq_model: str = "openai/gpt-oss-20b"
 ) -> CommandExecutionResponse:
     """
-    Phase 2 Unified Command Center Orchestrator.
-    Routes user instruction to registered tools and produces structured CommandExecutionResponse.
+    Phase 2 & 4 Unified Command Center Orchestrator with Privacy-Aware Routing.
+    Routes user instruction to registered tools and respects privacy mode.
     """
     clean_instr = (instruction or "").strip()[:2000]
     clean_selection = (selection_text or "").strip()[:15000]
     has_selection = bool(clean_selection)
+    pm = normalize_privacy_mode(privacy_mode)
 
     # Classify intent
     intent = classify_intent(clean_instr, has_selection=has_selection, mode=intent_override)
@@ -275,6 +284,7 @@ async def execute_command(
             risk_assessment=None,
             limitations="Browser extension sandbox restriction.",
             provider="guardrail_engine",
+            privacy_mode_applied=pm,
             error="Unsupported task type"
         )
 
@@ -292,6 +302,7 @@ async def execute_command(
                 risk_assessment=None,
                 limitations="Page content not loaded.",
                 provider="page_intelligence_engine",
+                privacy_mode_applied=pm,
                 error="No page available"
             )
 
@@ -329,8 +340,9 @@ async def execute_command(
             key_points=key_pts,
             evidence=evidence_items,
             risk_assessment=None,
-            limitations="Structural outline derived from DOM heading tags and text chunks.",
-            provider="page_intelligence_engine"
+            limitations="Structural outline derived locally from DOM heading tags and text chunks.",
+            provider="page_intelligence_engine",
+            privacy_mode_applied=pm
         )
 
     # 3. TOOL: inspect_links
@@ -401,10 +413,11 @@ async def execute_command(
                 risk_level=risk_level,
                 risk_score=risk_score,
                 findings=findings,
-                disclaimer="Link inspection evaluates URL structure, schemes, and anchor consistency."
+                disclaimer="Link inspection evaluates URL structure, schemes, and anchor consistency locally."
             ),
-            limitations="Scans visible links extracted from active page. External destinations not fetched.",
-            provider="link_security_engine"
+            limitations="Scans visible links extracted from active page locally. External destinations not fetched.",
+            provider="link_security_engine",
+            privacy_mode_applied=pm
         )
 
     # 4. TOOL: analyze_page_security
@@ -421,6 +434,7 @@ async def execute_command(
                 risk_assessment=None,
                 limitations="Page content not loaded.",
                 provider="security_engine",
+                privacy_mode_applied=pm,
                 error="No page data"
             )
 
@@ -455,8 +469,9 @@ async def execute_command(
                 findings=findings,
                 disclaimer=audit.get("disclaimer", "")
             ),
-            limitations="Heuristic and pattern-based evaluation of DOM forms, content cues, and URL context.",
-            provider="security_engine"
+            limitations="Heuristic and pattern-based local evaluation of DOM forms, content cues, and URL context.",
+            provider="security_engine",
+            privacy_mode_applied=pm
         )
 
     # 5. TOOL: analyze_selected_text
@@ -474,6 +489,7 @@ async def execute_command(
                 risk_assessment=None,
                 limitations="No text provided.",
                 provider="scamshield_hybrid",
+                privacy_mode_applied=pm,
                 error="Blank text"
             )
 
@@ -510,8 +526,9 @@ async def execute_command(
                 findings=reasons,
                 disclaimer=sec_res.get("disclaimer", "")
             ),
-            limitations="ScamShield ML and heuristic analysis of the provided text snippet.",
-            provider="scamshield_hybrid"
+            limitations="ScamShield ML and heuristic analysis executed locally on the provided text snippet.",
+            provider="scamshield_hybrid",
+            privacy_mode_applied=pm
         )
 
     # 6. TOOL: explain_page_content
@@ -523,8 +540,17 @@ async def execute_command(
         elif not target_content:
             target_content = clean_instr
 
-        if groq_api_key:
-            user_prompt = f"""Explain the following webpage content or concept in simple, accessible plain English (ELI5 style):
+        preview = target_content[:400] + ("..." if len(target_content) > 400 else "")
+        def explain_fallback():
+            return (
+                f"### Simplified Passage Overview\n\n"
+                f"\"{preview}\"\n\n"
+                f"- **Length**: {len(target_content)} characters (~{max(1, len(target_content.split()))} words).\n"
+                f"- **Context**: Extracted from active webpage selection or lead sections.\n\n"
+                f"*Privacy note: Running in {pm} mode with local deterministic analysis.*"
+            )
+
+        user_prompt = f"""Explain the following webpage content or concept in simple, accessible plain English (ELI5 style):
 
 CONTENT TO EXPLAIN:
 \"\"\"{target_content[:4000]}\"\"\"
@@ -534,47 +560,28 @@ Please format clearly:
 - **Key Terms Clarified**: Definitions of 2-3 important terms.
 - **Why It Matters**: Practical takeaway for the reader.
 """
-            try:
-                llm_explanation = await call_groq_llm(
-                    groq_api_key, groq_model, SYSTEM_PROMPT_GROUNDED, user_prompt, temperature=0.2
-                )
-                evidence_items = [
-                    EvidenceItem(heading="Source Passage", quote=target_content[:300], relevance_score=1.0)
-                ]
-                return CommandExecutionResponse(
-                    success=True,
-                    intent=intent,
-                    tool_name=tool_name,
-                    action_summary="Explained content in simplified, accessible language via LLM.",
-                    answer=llm_explanation,
-                    key_points=["Plain-English breakdown generated", "Key concepts simplified"],
-                    evidence=evidence_items,
-                    risk_assessment=None,
-                    limitations="Based on the provided passage and webpage context.",
-                    provider="groq"
-                )
-            except Exception as e:
-                print(f"[intent_router] Groq explanation failed: {e}")
-
-        # Deterministic explanation fallback
-        preview = target_content[:400] + ("..." if len(target_content) > 400 else "")
+        answer_text, provider_label = await route_llm_request(
+            system_prompt=SYSTEM_PROMPT_GROUNDED,
+            user_prompt=user_prompt,
+            privacy_mode=pm,
+            fallback_local_fn=explain_fallback,
+            temperature=0.2
+        )
+        evidence_items = [
+            EvidenceItem(heading="Source Passage", quote=target_content[:300], relevance_score=1.0)
+        ]
         return CommandExecutionResponse(
             success=True,
             intent=intent,
             tool_name=tool_name,
-            action_summary="Explained content using deterministic text analysis.",
-            answer=(
-                f"### Simplified Passage Overview\n\n"
-                f"\"{preview}\"\n\n"
-                f"- **Length**: {len(target_content)} characters (~{max(1, len(target_content.split()))} words).\n"
-                f"- **Context**: Extracted from active webpage selection or lead sections.\n\n"
-                f"*Tip: Configure GROQ_API_KEY for dynamic AI-powered conceptual breakdowns.*"
-            ),
-            key_points=[f"Selection length: {len(target_content)} characters", "Extracted directly from active page context"],
-            evidence=[EvidenceItem(heading="Analyzed Text", quote=preview, relevance_score=1.0)],
+            action_summary="Explained content in simplified, accessible language.",
+            answer=answer_text,
+            key_points=["Plain-English breakdown generated", "Key concepts simplified"],
+            evidence=evidence_items,
             risk_assessment=None,
-            limitations="Deterministic text overview (LLM provider currently offline).",
-            provider="deterministic_engine"
+            limitations="Based on the provided passage and webpage context.",
+            provider=provider_label,
+            privacy_mode_applied=pm
         )
 
     # 7. TOOL: summarize_page
@@ -591,14 +598,19 @@ Please format clearly:
                 risk_assessment=None,
                 limitations="Page content not loaded.",
                 provider="deterministic_engine",
+                privacy_mode_applied=pm,
                 error="No page chunks"
             )
 
         chunks = page.get("chunks", [])
         safe_ctx = build_safe_context(chunks[:10])
+        det = deterministic_summary(page)
 
-        if groq_api_key:
-            user_prompt = f"""Please provide a comprehensive summary of the webpage.
+        def summarize_fallback():
+            points_fmt = "\n".join(f"- {p}" for p in det["key_points"])
+            return f"### Summary of {page.get('title', 'Page')}\n\n{det['summary']}\n\n**Key Points:**\n{points_fmt}"
+
+        user_prompt = f"""Please provide a comprehensive summary of the webpage.
 
 WEBPAGE TITLE: {page.get('title', '')}
 WEBPAGE URL: {page.get('url', '')}
@@ -610,47 +622,29 @@ Please format your response clearly:
 - **Key Points**: 3-5 bullet points of crucial information.
 - **Notable Takeaways**: Crucial facts, dates, links, or conclusions mentioned on the page.
 """
-            try:
-                answer = await call_groq_llm(
-                    groq_api_key, groq_model, SYSTEM_PROMPT_GROUNDED, user_prompt, temperature=0.1
-                )
-                evidence_items = [
-                    EvidenceItem(heading=c.get("heading", "Section"), quote=c.get("text", "")[:250], relevance_score=0.95)
-                    for c in chunks[:4]
-                ]
-                return CommandExecutionResponse(
-                    success=True,
-                    intent=intent,
-                    tool_name=tool_name,
-                    action_summary=f"Summarized webpage into structured takeaways.",
-                    answer=answer,
-                    key_points=["Grounded LLM summary generated from page chunks"],
-                    evidence=evidence_items,
-                    risk_assessment=None,
-                    limitations="Summary grounded strictly on visible page sections.",
-                    provider="groq"
-                )
-            except Exception as error:
-                print(f"[intent_router] Groq summarization error: {error}")
-
-        # Deterministic summary fallback
-        det = deterministic_summary(page)
+        answer_text, provider_label = await route_llm_request(
+            system_prompt=SYSTEM_PROMPT_GROUNDED,
+            user_prompt=user_prompt,
+            privacy_mode=pm,
+            fallback_local_fn=summarize_fallback,
+            temperature=0.1
+        )
         evidence_items = [
-            EvidenceItem(heading=c.get("heading", "Section"), quote=c.get("text", "")[:200], relevance_score=0.9)
-            for c in chunks[:3]
+            EvidenceItem(heading=c.get("heading", "Section"), quote=c.get("text", "")[:250], relevance_score=0.95)
+            for c in chunks[:4]
         ]
-        points_fmt = "\n".join(f"- {p}" for p in det["key_points"])
         return CommandExecutionResponse(
             success=True,
             intent=intent,
             tool_name=tool_name,
-            action_summary="Generated deterministic summary from key page sentences.",
-            answer=f"### Summary of {page.get('title', 'Page')}\n\n{det['summary']}\n\n**Key Points:**\n{points_fmt}",
-            key_points=det["key_points"],
+            action_summary="Summarized webpage into structured takeaways.",
+            answer=answer_text,
+            key_points=det["key_points"] if "deterministic" in provider_label else ["Grounded summary generated from page chunks"],
             evidence=evidence_items,
             risk_assessment=None,
-            limitations="Extractive summary from lead sentences (deterministic engine).",
-            provider="deterministic_engine"
+            limitations="Summary grounded strictly on visible page sections.",
+            provider=provider_label,
+            privacy_mode_applied=pm
         )
 
     # 8. TOOL: compare_provided_content
@@ -668,6 +662,7 @@ Please format your response clearly:
                 risk_assessment=None,
                 limitations="Page content not loaded.",
                 provider="deterministic_comparison",
+                privacy_mode_applied=pm,
                 error="No page content"
             )
 
@@ -688,8 +683,23 @@ Please format your response clearly:
 
         safe_ctx = build_safe_context(cmp_chunks)
 
-        if groq_api_key:
-            user_prompt = f"""Compare the user's provided snippet or claim against the webpage context.
+        def compare_fallback():
+            matching_lines = []
+            words = set(re.findall(r"\w{4,}", target_claim.lower()))
+            for c in cmp_chunks:
+                c_words = set(re.findall(r"\w{4,}", c.get("text", "").lower()))
+                overlap = words.intersection(c_words)
+                if len(overlap) >= 2:
+                    matching_lines.append(f"Section **{c.get('heading', 'Page')}**: shares terms ({', '.join(list(overlap)[:4])})")
+
+            resp_text = f"Compared selection against {len(cmp_chunks)} relevant sections on this page.\n"
+            if matching_lines:
+                resp_text += "\nRelevant overlap found:\n" + "\n".join(f"- {m}" for m in matching_lines)
+            else:
+                resp_text += "\nNo strong textual overlap found between the provided selection and this page's content."
+            return resp_text
+
+        user_prompt = f"""Compare the user's provided snippet or claim against the webpage context.
 
 PROVIDED SNIPPET / CLAIM:
 \"\"\"{target_claim}\"\"\"
@@ -702,59 +712,29 @@ Analyze:
 2. Evidence: Quote or cite the relevant part of the page.
 3. Differences: Point out any nuances, modifications, or omitted details.
 """
-            try:
-                answer = await call_groq_llm(
-                    groq_api_key, groq_model, SYSTEM_PROMPT_GROUNDED, user_prompt, temperature=0.1
-                )
-                evidence_items = [
-                    EvidenceItem(heading=c.get("heading", "Source"), quote=c.get("text", "")[:250], relevance_score=0.9)
-                    for c in cmp_chunks
-                ]
-                return CommandExecutionResponse(
-                    success=True,
-                    intent=intent,
-                    tool_name=tool_name,
-                    action_summary="Compared claim against page content via LLM.",
-                    answer=answer,
-                    key_points=["Verified against top retrieved page sections"],
-                    evidence=evidence_items,
-                    risk_assessment=None,
-                    limitations="Fact-checked against visible page context only.",
-                    provider="groq"
-                )
-            except Exception as e:
-                print(f"[intent_router] Groq compare error: {e}")
-
-        # Deterministic comparison fallback
-        matching_lines = []
-        words = set(re.findall(r"\w{4,}", target_claim.lower()))
-        for c in cmp_chunks:
-            c_words = set(re.findall(r"\w{4,}", c.get("text", "").lower()))
-            overlap = words.intersection(c_words)
-            if len(overlap) >= 2:
-                matching_lines.append(f"Section **{c.get('heading', 'Page')}**: shares terms ({', '.join(list(overlap)[:4])})")
-
-        resp_text = f"Compared selection against {len(cmp_chunks)} relevant sections on this page.\n"
-        if matching_lines:
-            resp_text += "\nRelevant overlap found:\n" + "\n".join(f"- {m}" for m in matching_lines)
-        else:
-            resp_text += "\nNo strong textual overlap found between the provided selection and this page's content."
-
+        answer_text, provider_label = await route_llm_request(
+            system_prompt=SYSTEM_PROMPT_GROUNDED,
+            user_prompt=user_prompt,
+            privacy_mode=pm,
+            fallback_local_fn=compare_fallback,
+            temperature=0.1
+        )
         evidence_items = [
-            EvidenceItem(heading=c.get("heading", "Section"), quote=c.get("text", "")[:200], relevance_score=0.7)
+            EvidenceItem(heading=c.get("heading", "Source"), quote=c.get("text", "")[:250], relevance_score=0.9)
             for c in cmp_chunks
         ]
         return CommandExecutionResponse(
             success=True,
             intent=intent,
             tool_name=tool_name,
-            action_summary="Compared claim against page chunks via keyword overlap.",
-            answer=resp_text,
-            key_points=matching_lines or ["No strong keyword overlap detected"],
+            action_summary="Compared claim against page content.",
+            answer=answer_text,
+            key_points=["Verified against top retrieved page sections"],
             evidence=evidence_items,
             risk_assessment=None,
-            limitations="Deterministic term comparison.",
-            provider="deterministic_comparison"
+            limitations="Fact-checked against visible page context only.",
+            provider=provider_label,
+            privacy_mode_applied=pm
         )
 
     # 9. TOOL: answer_page_question (Default grounded RAG)
@@ -770,6 +750,7 @@ Analyze:
             risk_assessment=None,
             limitations="Page content not loaded.",
             provider="deterministic_fallback",
+            privacy_mode_applied=pm,
             error="No page chunks"
         )
 
@@ -790,8 +771,19 @@ Analyze:
 
     safe_ctx = build_safe_context(relevant_chunks)
 
-    if groq_api_key:
-        user_prompt = f"""USER QUESTION:
+    def qa_fallback():
+        lead_matches = []
+        for c in relevant_chunks:
+            t = c.get("text", "")
+            if clean_instr.lower() in t.lower():
+                lead_matches.append(t[:300])
+
+        if lead_matches:
+            return f"Here is the most relevant section found on the page:\n\n\"{lead_matches[0]}\""
+        else:
+            return f"Retrieved {len(relevant_chunks)} section(s) relevant to your question under {pm} mode. No external cloud inference was used."
+
+    user_prompt = f"""USER QUESTION:
 {clean_instr}
 
 WEBPAGE CONTEXT:
@@ -801,56 +793,29 @@ Answer the question directly based ONLY on the webpage context provided above.
 If the webpage context does not contain the answer, say:
 "I couldn't find that information on this page."
 """
-        try:
-            answer = await call_groq_llm(
-                groq_api_key, groq_model, SYSTEM_PROMPT_GROUNDED, user_prompt, temperature=0.05
-            )
-            evidence_items = [
-                EvidenceItem(heading=c.get("heading", "Source"), quote=c.get("text", "")[:250], relevance_score=0.9)
-                for c in relevant_chunks
-            ]
-            return CommandExecutionResponse(
-                success=True,
-                intent="answer_page_question",
-                tool_name=tool_name,
-                action_summary=f"Answered user question grounded in {len(relevant_chunks)} page sections.",
-                answer=answer,
-                key_points=["Grounded in retrieved page sections"],
-                evidence=evidence_items,
-                risk_assessment=None,
-                limitations="Grounded only on the visible sections of the active webpage.",
-                provider="groq"
-            )
-        except Exception as err:
-            print(f"[intent_router] Groq Q&A error: {err}")
-
-    # Fallback if Groq unavailable
-    lead_matches = []
-    for c in relevant_chunks:
-        t = c.get("text", "")
-        if clean_instr.lower() in t.lower():
-            lead_matches.append(t[:300])
-
-    if lead_matches:
-        text_resp = f"Here is the most relevant section found on the page:\n\n\"{lead_matches[0]}\""
-    else:
-        text_resp = f"Retrieved {len(relevant_chunks)} section(s) relevant to your question, but the external LLM is currently unreachable to synthesize an answer."
-
+    answer_text, provider_label = await route_llm_request(
+        system_prompt=SYSTEM_PROMPT_GROUNDED,
+        user_prompt=user_prompt,
+        privacy_mode=pm,
+        fallback_local_fn=qa_fallback,
+        temperature=0.05
+    )
     evidence_items = [
-        EvidenceItem(heading=c.get("heading", "Source"), quote=c.get("text", "")[:250], relevance_score=0.8)
+        EvidenceItem(heading=c.get("heading", "Source"), quote=c.get("text", "")[:250], relevance_score=0.9)
         for c in relevant_chunks
     ]
     return CommandExecutionResponse(
         success=True,
         intent="answer_page_question",
         tool_name=tool_name,
-        action_summary=f"Retrieved {len(relevant_chunks)} page sections matching query.",
-        answer=text_resp,
-        key_points=[f"Found {len(relevant_chunks)} relevant content chunks"],
+        action_summary=f"Answered user question grounded in {len(relevant_chunks)} page sections.",
+        answer=answer_text,
+        key_points=["Grounded in retrieved page sections"],
         evidence=evidence_items,
         risk_assessment=None,
-        limitations="Extractive snippet matching (deterministic fallback).",
-        provider="deterministic_fallback"
+        limitations="Grounded only on the visible sections of the active webpage.",
+        provider=provider_label,
+        privacy_mode_applied=pm
     )
 
 
@@ -859,6 +824,7 @@ async def execute_tool_request(
     page: dict[str, Any] | None,
     selection_text: str = "",
     mode: str = "auto",
+    privacy_mode: str = "hybrid",
     groq_api_key: str = "",
     groq_model: str = "openai/gpt-oss-20b"
 ) -> dict[str, Any]:
@@ -871,6 +837,7 @@ async def execute_tool_request(
         page=page,
         selection_text=selection_text,
         intent_override=mode,
+        privacy_mode=privacy_mode,
         groq_api_key=groq_api_key,
         groq_model=groq_model
     )
@@ -891,5 +858,6 @@ async def execute_tool_request(
         "risk_assessment": cmd_resp.risk_assessment.model_dump() if cmd_resp.risk_assessment else None,
         "limitations": cmd_resp.limitations,
         "provider": cmd_resp.provider,
+        "privacy_mode_applied": cmd_resp.privacy_mode_applied,
         "error": cmd_resp.error
     }

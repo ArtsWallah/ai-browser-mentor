@@ -632,4 +632,176 @@ def test_workspace_injection_isolation():
     assert passages[0]["source_url"] == "https://malicious.example.com/post"
 
 
+# ============================================================
+# PHASE 4: HYBRID AI ENGINE & PRIVACY-AWARE ROUTING TESTS
+# ============================================================
+
+def test_model_registry_endpoint(client):
+    """GET /models returns actual available providers and capabilities without hypothetical models."""
+    resp = client.get("/models")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert "hybrid" in data["active_privacy_modes"]
+    assert "local_only" in data["active_privacy_modes"]
+    assert "cloud" in data["active_privacy_modes"]
+    assert data["current_privacy_mode"] == "hybrid"
+
+    # Verify real registered models
+    model_ids = [m["id"] for m in data["models"]]
+    assert "local-deterministic-nlp" in model_ids
+    assert "local-fastembed-minilm" in model_ids
+    assert "local-scamshield-classifier" in model_ids
+    assert "groq-cloud-llm" in model_ids
+
+    # Local models must have is_local=True and valid privacy_level
+    for m in data["models"]:
+        if m["is_local"]:
+            assert m["privacy_level"] == "local_only"
+            assert len(m["supported_tasks"]) > 0
+
+
+def test_model_registry_status_endpoint(client):
+    """GET /models/status reflects query parameter privacy mode."""
+    resp = client.get("/models/status?privacy_mode=local_only")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["current_privacy_mode"] == "local_only"
+
+
+def test_privacy_mode_local_only_enforcement_command(client):
+    """Local-only mode in /command/execute strictly runs local engines and returns local provider."""
+    # Ingest a test page
+    page_id = "p4_test_page"
+    client.post("/page/ingest", json={
+        "page_id": page_id,
+        "title": "Quantum Encryption Protocols",
+        "url": "https://privacy.example.com/quantum",
+        "hostname": "privacy.example.com",
+        "content": "Quantum key distribution utilizes photon polarization states to detect eavesdropping.",
+        "paragraphs": ["Quantum key distribution utilizes photon polarization states to detect eavesdropping."],
+        "chunks": [{
+            "id": "c1",
+            "heading": "Quantum Key Distribution",
+            "text": "Quantum key distribution utilizes photon polarization states to detect eavesdropping."
+        }]
+    })
+
+    # Execute summarize with local_only
+    resp = client.post("/command/execute", json={
+        "instruction": "Summarize this page",
+        "page_id": page_id,
+        "privacy_mode": "local_only"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["privacy_mode_applied"] == "local_only"
+    assert "local" in data["provider"].lower()
+    assert "groq" not in data["provider"].lower()
+
+
+def test_privacy_mode_local_only_qa(client):
+    """Question answering under local_only mode never routes to external cloud."""
+    page_id = "p4_test_qa"
+    client.post("/page/ingest", json={
+        "page_id": page_id,
+        "title": "Solar Flares Guide",
+        "url": "https://space.example.com/flares",
+        "hostname": "space.example.com",
+        "content": "Class X flares are the most intense category of solar eruptions.",
+        "paragraphs": ["Class X flares are the most intense category of solar eruptions."],
+        "chunks": [{
+            "id": "c1",
+            "heading": "Flare Categories",
+            "text": "Class X flares are the most intense category of solar eruptions."
+        }]
+    })
+
+    resp = client.post("/command/execute", json={
+        "instruction": "What are Class X flares?",
+        "page_id": page_id,
+        "privacy_mode": "local_only"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["privacy_mode_applied"] == "local_only"
+    assert "local" in data["provider"].lower()
+    assert "groq" not in data["provider"].lower()
+
+
+@pytest.mark.anyio
+async def test_hybrid_router_local_only_strict_cloud_block():
+    """hybrid_router.route_llm_request with local_only strictly blocks cloud and calls local fallback."""
+    from app.services.hybrid_router import route_llm_request, PRIVACY_LOCAL_ONLY
+
+    fallback_called = False
+    def local_fallback():
+        nonlocal fallback_called
+        fallback_called = True
+        return "Local deterministic output."
+
+    ans, provider = await route_llm_request(
+        system_prompt="system",
+        user_prompt="user question",
+        privacy_mode=PRIVACY_LOCAL_ONLY,
+        fallback_local_fn=local_fallback
+    )
+
+    assert "local" in provider
+    assert "groq" not in provider
+    # When Ollama is not installed locally, local fallback is invoked
+    assert ans != ""
+
+
+@pytest.mark.anyio
+async def test_hybrid_router_cloud_unconfigured_error():
+    """hybrid_router.route_llm_request in cloud mode without API key raises descriptive error."""
+    import pytest
+    from app.services.hybrid_router import route_llm_request, PRIVACY_CLOUD
+
+    # Temporarily ensure GROQ_API_KEY is empty in test
+    import app.services.hybrid_router as hr
+    old_key = hr.GROQ_API_KEY
+    try:
+        hr.GROQ_API_KEY = ""
+        with pytest.raises(RuntimeError) as exc_info:
+            await route_llm_request(
+                system_prompt="system",
+                user_prompt="test",
+                privacy_mode=PRIVACY_CLOUD
+            )
+        assert "GROQ_API_KEY is not configured" in str(exc_info.value)
+    finally:
+        hr.GROQ_API_KEY = old_key
+
+
+def test_workspace_query_local_only(client):
+    """Research workspace query respects local_only privacy setting."""
+    sources = [
+        {
+            "id": "src_priv",
+            "title": "Private Medical Journal",
+            "url": "https://secure.example.com/record",
+            "hostname": "secure.example.com",
+            "text": "Patient responded favorably to protocol Beta with zero adverse events recorded."
+        }
+    ]
+
+    resp = client.post("/workspace/query", json={
+        "query": "How did the patient respond to protocol Beta?",
+        "workspace_name": "Private Health",
+        "sources": sources,
+        "privacy_mode": "local_only"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["privacy_mode_applied"] == "local_only"
+    assert "local" in data["provider"].lower()
+    assert "groq" not in data["provider"].lower()
+
+
+
 
