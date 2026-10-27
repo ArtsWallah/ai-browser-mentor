@@ -513,6 +513,339 @@
             color: var(--cyan);
         }
 
+        /* COMMAND CENTER STYLES */
+        .badge-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 999px;
+            background: rgba(161, 177, 213, 0.1);
+            color: var(--muted);
+            border: 1px solid var(--border);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .badge-status.ready {
+            background: var(--success-bg);
+            color: var(--success);
+            border-color: rgba(80, 223, 176, 0.3);
+        }
+
+        .badge-status.restricted {
+            background: var(--warning-bg);
+            color: var(--warning);
+            border-color: rgba(255, 200, 107, 0.3);
+        }
+
+        .command-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .command-chip {
+            padding: 5px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            border-radius: 999px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .command-chip:hover {
+            border-color: var(--cyan);
+            color: var(--cyan);
+            background: rgba(98, 217, 245, 0.08);
+            transform: translateY(-1px);
+        }
+
+        .command-context-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            color: var(--muted);
+            gap: 8px;
+        }
+
+        .context-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .command-input-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 10px;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .command-input-container:focus-within {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px var(--primary-glow);
+        }
+
+        .command-input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 12px;
+            line-height: 1.5;
+            resize: none;
+            outline: none;
+            min-height: 54px;
+        }
+
+        .command-action-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding-top: 6px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .command-hints {
+            font-size: 10px;
+            color: var(--muted);
+        }
+
+        .command-btn-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* RESPONSE STATES */
+        .state-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 22px 14px;
+            background: var(--bg);
+            border: 1px dashed var(--border);
+            border-radius: var(--radius-md);
+            gap: 6px;
+        }
+
+        .state-empty-icon {
+            font-size: 22px;
+            margin-bottom: 2px;
+            color: var(--primary);
+        }
+
+        .state-empty-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .state-empty-desc {
+            font-size: 11px;
+            color: var(--muted);
+            max-width: 320px;
+            line-height: 1.4;
+        }
+
+        .state-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px 16px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            gap: 10px;
+            text-align: center;
+        }
+
+        .loading-pulse {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 3px solid rgba(130, 116, 255, 0.2);
+            border-top-color: var(--cyan);
+            animation: spin 0.8s linear infinite;
+        }
+
+        .loading-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .loading-subtitle {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .command-result-card {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 12px;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .result-badges {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .badge-tool {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: rgba(130, 116, 255, 0.15);
+            border: 1px solid rgba(130, 116, 255, 0.4);
+            color: #b4aaff;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+
+        .badge-provider {
+            padding: 3px 6px;
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            color: var(--cyan);
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .result-action-summary {
+            font-size: 11px;
+            font-style: italic;
+            color: var(--muted);
+            line-height: 1.4;
+        }
+
+        .result-answer {
+            font-size: 12px;
+            color: var(--text);
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 240px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .result-answer h3 {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--cyan);
+            margin-bottom: 6px;
+        }
+
+        .result-answer strong {
+            color: #fff;
+        }
+
+        .result-key-points {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-top: 4px;
+        }
+
+        .result-key-point-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            background: var(--surface-raised);
+            border: 1px solid rgba(161, 177, 213, 0.1);
+            border-radius: 6px;
+            padding: 6px 8px;
+        }
+
+        .result-key-point-bullet {
+            color: var(--cyan);
+            font-weight: bold;
+            line-height: 1;
+        }
+
+        .evidence-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 4px;
+        }
+
+        .evidence-card {
+            padding: 6px 8px;
+            background: var(--surface-raised);
+            border-left: 3px solid var(--primary);
+            border-radius: 0 6px 6px 0;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .evidence-card strong {
+            color: var(--text);
+            display: block;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 2px;
+        }
+
+        .result-limitations {
+            font-size: 10px;
+            color: var(--muted);
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            padding-top: 6px;
+            font-style: italic;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
         /* SECURITY TAB STYLES */
         .verdict-banner {
             display: flex;
@@ -837,7 +1170,10 @@
         <!-- PAGE CONTEXT STRIP -->
         <div class="page-strip" id="pageStrip">
             <div class="page-meta">
-                <div class="page-title-text" id="activePageTitle">Loading active tab...</div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <div class="page-title-text" id="activePageTitle">Loading active tab...</div>
+                    <span class="badge-status" id="pageStatusBadge">Not Read</span>
+                </div>
                 <div class="page-domain" id="activePageDomain">Please wait</div>
             </div>
             <button class="btn-read-page" id="btnReadPage" type="button">
@@ -863,37 +1199,120 @@
 
         <!-- NAVIGATION TABS -->
         <nav class="nav-tabs" role="tablist">
-            <button class="nav-tab active" id="tabBtnAsk" role="tab" data-tab="panelAsk">&#129504; Ask AI</button>
+            <button class="nav-tab active" id="tabBtnCommand" role="tab" data-tab="panelCommand">&#9889; Command Center</button>
             <button class="nav-tab" id="tabBtnSecurity" role="tab" data-tab="panelSecurity">&#128737; Security</button>
             <button class="nav-tab" id="tabBtnLinks" role="tab" data-tab="panelLinks">&#128279; Links</button>
             <button class="nav-tab" id="tabBtnInsights" role="tab" data-tab="panelInsights">&#128202; Insights</button>
         </nav>
 
-        <!-- ==================== TAB 1: ASK AI ==================== -->
-        <section class="tab-panel active" id="panelAsk" role="tabpanel">
+        <!-- ==================== TAB 1: AI COMMAND CENTER ==================== -->
+        <section class="tab-panel active" id="panelCommand" role="tabpanel">
             <div class="card">
-                <div class="quick-prompts">
-                    <button class="prompt-chip" data-prompt="Summarize this page in 3 concise bullet points" type="button">&#128221; Summarize</button>
-                    <button class="prompt-chip" data-prompt="What are the key takeaways from this page?" type="button">&#128204; Key Points</button>
-                    <button class="prompt-chip" data-prompt="Explain this page in simple plain English" type="button">&#128161; Explain Simply</button>
-                    <button class="prompt-chip" data-prompt="Is there any suspicious or urgency language on this page?" type="button">&#128269; Safety Check</button>
+                <!-- SUGGESTED TASK CHIPS -->
+                <div class="command-chips" id="commandChips">
+                    <button class="command-chip" data-task="summarize_page" data-prompt="Summarize this page with core takeaways" type="button">&#128221; Summarize</button>
+                    <button class="command-chip" data-task="explain_page_content" data-prompt="Explain this page in simple plain English" type="button">&#128161; Explain</button>
+                    <button class="command-chip" data-task="extract_page_information" data-prompt="Extract page outline and structural statistics" type="button">&#128196; Extract Info</button>
+                    <button class="command-chip" data-task="analyze_page_security" data-prompt="Audit this page for security and scam threats" type="button">&#128737; Security Analysis</button>
+                    <button class="command-chip" data-task="inspect_links" data-prompt="Inspect links on this page for phishing or deceptive URLs" type="button">&#128279; Inspect Links</button>
                 </div>
 
-                <div class="input-area">
-                    <textarea id="questionInput" placeholder="Ask anything about this webpage, or click a quick prompt above... (Press Enter to ask)"></textarea>
-                    <button class="btn-primary" id="btnAskMentor" type="button">
-                        <span class="spinner" id="askSpinner" style="display: none;"></span>
-                        <span id="askBtnText">Ask Mentor</span>
-                    </button>
-                </div>
-
-                <div class="answer-box" id="answerContainer" style="display: none;">
-                    <div class="answer-meta">
-                        <span id="answerProviderBadge">&#129504; AI Mentor Response</span>
-                        <button class="btn-copy" id="btnCopyAnswer" type="button" title="Copy to clipboard">Copy</button>
+                <!-- CONTEXT STRIP -->
+                <div class="command-context-bar" id="commandContextBar">
+                    <div class="context-indicator">
+                        <span>&#127760;</span>
+                        <strong id="contextPageName" style="max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Active Page</strong>
                     </div>
-                    <div class="answer-text" id="answerContent"></div>
-                    <div class="sources-area" id="sourcesArea" style="display: none;"></div>
+                    <div class="context-indicator" id="contextSelectionInfo">
+                        <span style="color: var(--cyan);">&#9998;</span>
+                        <span id="contextSelectionText">No selection</span>
+                    </div>
+                </div>
+
+                <!-- UNIFIED COMMAND INPUT OMNIBAR -->
+                <div class="command-input-container">
+                    <textarea class="command-input" id="commandInput" placeholder="Enter a request, question, or command... (e.g. 'Summarize this page', 'Explain simply', 'Is this secure?')... Press Enter to run"></textarea>
+                    <div class="command-action-row">
+                        <span class="command-hints">&#9166; Enter to run &bull; Shift+Enter newline</span>
+                        <div class="command-btn-group">
+                            <button class="btn-chip" id="btnClearCommand" type="button" title="Clear input">&#10005; Clear</button>
+                            <button class="btn-primary" id="btnRunCommand" type="button" style="padding: 6px 14px; font-size: 11px;">
+                                <span class="spinner" id="commandSpinner" style="display: none;"></span>
+                                <span id="commandBtnText">&#9889; Run</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COMMAND RESPONSE CONTAINER -->
+                <div id="commandResponseArea">
+                    <!-- 1. EMPTY STATE -->
+                    <div class="state-empty" id="commandEmptyState">
+                        <div class="state-empty-icon">&#10024;</div>
+                        <div class="state-empty-title">AI Command Center Ready</div>
+                        <div class="state-empty-desc">
+                            Type a natural-language request or click a suggested task chip. The system selects the appropriate tool, gathers active tab context, and returns verified results.
+                        </div>
+                    </div>
+
+                    <!-- 2. LOADING STATE -->
+                    <div class="state-loading" id="commandLoadingState" style="display: none;">
+                        <div class="loading-pulse"></div>
+                        <div class="loading-title">Executing AI Tool...</div>
+                        <div class="loading-subtitle" id="commandLoadingSubtitle">Gathering page context and orchestrating registered tool</div>
+                    </div>
+
+                    <!-- 3. ERROR STATE -->
+                    <div class="alert-box error" id="commandErrorBox" style="display: none; margin-bottom: 8px;">
+                        <span style="font-size: 16px;">&#9888;</span>
+                        <span id="commandErrorMsg">An error occurred during execution.</span>
+                    </div>
+
+                    <!-- 4. RESULT CARD STATE -->
+                    <div class="command-result-card" id="commandResultCard" style="display: none;">
+                        <div class="result-header">
+                            <div class="result-badges">
+                                <span class="badge-tool" id="resultToolBadge">&#9889; Tool</span>
+                                <span class="badge-provider" id="resultProviderBadge">Engine</span>
+                            </div>
+                            <div style="display: flex; gap: 6px;">
+                                <button class="btn-copy" id="btnCopyCommandResult" type="button" title="Copy response to clipboard">Copy</button>
+                                <button class="btn-copy" id="btnNewTask" type="button" title="Clear and start new task">&#10005; New Task</button>
+                            </div>
+                        </div>
+
+                        <div class="result-action-summary" id="resultActionSummary"></div>
+
+                        <!-- Optional Risk Banner -->
+                        <div class="verdict-banner low" id="resultRiskBanner" style="display: none; padding: 8px 10px;">
+                            <div>
+                                <span class="verdict-title" id="resultRiskTitle" style="font-size: 12px;">Low Risk</span>
+                                <span class="verdict-subtitle" id="resultRiskSubtitle" style="font-size: 10px;">No threats found</span>
+                            </div>
+                            <div class="verdict-score" id="resultRiskScore" style="font-size: 16px;">0/100</div>
+                        </div>
+
+                        <!-- Direct Answer -->
+                        <div class="result-answer" id="resultAnswer"></div>
+
+                        <!-- Key Points -->
+                        <div id="resultKeyPointsContainer" style="display: none;">
+                            <div style="font-size: 11px; font-weight: 700; color: var(--text); margin-top: 4px; margin-bottom: 3px;">Key Points:</div>
+                            <div class="result-key-points" id="resultKeyPointsList"></div>
+                        </div>
+
+                        <!-- Grounded Evidence -->
+                        <div id="resultEvidenceContainer" style="display: none;">
+                            <div style="font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 6px; margin-bottom: 4px;">Grounded Page Evidence:</div>
+                            <div class="evidence-cards" id="resultEvidenceCards"></div>
+                        </div>
+
+                        <!-- Limitations Notice -->
+                        <div class="result-limitations" id="resultLimitations">
+                            <span>&#8505;</span>
+                            <span id="resultLimitationsText">Grounded strictly on visible webpage context.</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>

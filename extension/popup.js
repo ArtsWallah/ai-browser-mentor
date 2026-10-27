@@ -1,5 +1,6 @@
 // ============================================================
 // AI BROWSER MENTOR - UNIVERSAL EXTENSION CONTROLLER
+// Phase 2: AI Command Center Orchestration
 // ============================================================
 
 const BACKEND_URL = "http://127.0.0.1:8000";
@@ -10,42 +11,67 @@ let currentPageId = "";
 let currentPageData = null;
 let currentSelection = "";
 let isReadingPage = false;
-let isAsking = false;
+let isExecutingCommand = false;
 let allScannedLinks = [];
 let currentLinkFilter = "all";
 
-// DOM Elements
+// DOM Elements: Header & Status
 const connectionDot = document.getElementById("connectionDot");
 const connectionText = document.getElementById("connectionText");
 const activePageTitle = document.getElementById("activePageTitle");
 const activePageDomain = document.getElementById("activePageDomain");
+const pageStatusBadge = document.getElementById("pageStatusBadge");
 const btnReadPage = document.getElementById("btnReadPage");
 const readPageSpinner = document.getElementById("readPageSpinner");
 const readPageText = document.getElementById("readPageText");
 
+// Selection Banner
 const selectionBanner = document.getElementById("selectionBanner");
 const selectionPreview = document.getElementById("selectionPreview");
 const btnExplainSelection = document.getElementById("btnExplainSelection");
 const btnAuditSelection = document.getElementById("btnAuditSelection");
 const globalAlert = document.getElementById("globalAlert");
 
-// Nav tabs
+// Navigation Tabs
 const navTabs = document.querySelectorAll(".nav-tab");
 const tabPanels = document.querySelectorAll(".tab-panel");
 
-// Ask AI Panel
-const questionInput = document.getElementById("questionInput");
-const btnAskMentor = document.getElementById("btnAskMentor");
-const askSpinner = document.getElementById("askSpinner");
-const askBtnText = document.getElementById("askBtnText");
-const answerContainer = document.getElementById("answerContainer");
-const answerContent = document.getElementById("answerContent");
-const answerProviderBadge = document.getElementById("answerProviderBadge");
-const btnCopyAnswer = document.getElementById("btnCopyAnswer");
-const sourcesArea = document.getElementById("sourcesArea");
-const promptChips = document.querySelectorAll(".prompt-chip");
+// Command Center Elements
+const commandChips = document.querySelectorAll(".command-chip");
+const contextPageName = document.getElementById("contextPageName");
+const contextSelectionText = document.getElementById("contextSelectionText");
+const commandInput = document.getElementById("commandInput");
+const btnRunCommand = document.getElementById("btnRunCommand");
+const commandSpinner = document.getElementById("commandSpinner");
+const commandBtnText = document.getElementById("commandBtnText");
+const btnClearCommand = document.getElementById("btnClearCommand");
+const btnNewTask = document.getElementById("btnNewTask");
+const btnCopyCommandResult = document.getElementById("btnCopyCommandResult");
 
-// Security Panel
+// Command States & Result Cards
+const commandEmptyState = document.getElementById("commandEmptyState");
+const commandLoadingState = document.getElementById("commandLoadingState");
+const commandLoadingSubtitle = document.getElementById("commandLoadingSubtitle");
+const commandErrorBox = document.getElementById("commandErrorBox");
+const commandErrorMsg = document.getElementById("commandErrorMsg");
+const commandResultCard = document.getElementById("commandResultCard");
+
+const resultToolBadge = document.getElementById("resultToolBadge");
+const resultProviderBadge = document.getElementById("resultProviderBadge");
+const resultActionSummary = document.getElementById("resultActionSummary");
+const resultRiskBanner = document.getElementById("resultRiskBanner");
+const resultRiskTitle = document.getElementById("resultRiskTitle");
+const resultRiskSubtitle = document.getElementById("resultRiskSubtitle");
+const resultRiskScore = document.getElementById("resultRiskScore");
+const resultAnswer = document.getElementById("resultAnswer");
+const resultKeyPointsContainer = document.getElementById("resultKeyPointsContainer");
+const resultKeyPointsList = document.getElementById("resultKeyPointsList");
+const resultEvidenceContainer = document.getElementById("resultEvidenceContainer");
+const resultEvidenceCards = document.getElementById("resultEvidenceCards");
+const resultLimitations = document.getElementById("resultLimitations");
+const resultLimitationsText = document.getElementById("resultLimitationsText");
+
+// Security Panel Elements
 const gmailSection = document.getElementById("gmailSection");
 const btnScanGmail = document.getElementById("btnScanGmail");
 const gmailSpinner = document.getElementById("gmailSpinner");
@@ -64,7 +90,7 @@ const scamshieldSection = document.getElementById("scamshieldSection");
 const tacticsGrid = document.getElementById("tacticsGrid");
 const securityStatusTag = document.getElementById("securityStatusTag");
 
-// Links Panel
+// Links Panel Elements
 const btnRescanLinks = document.getElementById("btnRescanLinks");
 const customLinkInput = document.getElementById("customLinkInput");
 const btnCheckCustomLink = document.getElementById("btnCheckCustomLink");
@@ -74,7 +100,7 @@ const linkSuspiciousCount = document.getElementById("linkSuspiciousCount");
 const linkRiskyCount = document.getElementById("linkRiskyCount");
 const linksListContainer = document.getElementById("linksListContainer");
 
-// Insights Panel
+// Insights Panel Elements
 const insightWordCount = document.getElementById("insightWordCount");
 const insightReadTime = document.getElementById("insightReadTime");
 const insightChunks = document.getElementById("insightChunks");
@@ -127,7 +153,7 @@ function isRestrictedUrl(url) {
 
 function escapeHtml(str) {
     if (!str) return "";
-    return str
+    return String(str)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
@@ -144,6 +170,7 @@ async function initialize() {
     checkBackendHealth();
     await resolveActiveTab();
     setupEventListeners();
+    showCommandEmptyState();
 }
 
 async function checkBackendHealth() {
@@ -182,28 +209,40 @@ async function resolveActiveTab() {
 
         currentTab = tabs[0];
         const url = currentTab.url || "";
+        const title = currentTab.title || "Active Webpage";
 
         try {
             const parsed = new URL(url);
-            activePageTitle.textContent = currentTab.title || parsed.hostname;
+            activePageTitle.textContent = title;
             activePageDomain.textContent = parsed.hostname;
+            if (contextPageName) contextPageName.textContent = title.slice(0, 36) + (title.length > 36 ? "..." : "");
 
             // Check if Gmail
             if (parsed.hostname.endsWith("mail.google.com")) {
                 if (gmailSection) gmailSection.style.display = "flex";
             }
         } catch {
-            activePageTitle.textContent = currentTab.title || "Webpage";
+            activePageTitle.textContent = title;
             activePageDomain.textContent = url.slice(0, 30);
+            if (contextPageName) contextPageName.textContent = title.slice(0, 36);
         }
 
         if (isRestrictedUrl(url)) {
-            showAlert("Chrome restricts assistant extensions on internal pages. Open an ordinary website to read content.", "info");
+            if (pageStatusBadge) {
+                pageStatusBadge.textContent = "Restricted";
+                pageStatusBadge.className = "badge-status restricted";
+            }
+            showAlert("Chrome restricts assistant extensions on internal and web store pages.", "info");
             btnReadPage.disabled = true;
             return;
         }
 
-        // Try detecting highlighted text on the active page
+        if (pageStatusBadge) {
+            pageStatusBadge.textContent = "Not Read";
+            pageStatusBadge.className = "badge-status";
+        }
+
+        // Detect highlighted text on the active page
         detectUserSelection();
 
     } catch (err) {
@@ -212,7 +251,7 @@ async function resolveActiveTab() {
 }
 
 async function detectUserSelection() {
-    if (!currentTab?.id) return;
+    if (!currentTab?.id || isRestrictedUrl(currentTab.url)) return;
     try {
         const resp = await chrome.tabs.sendMessage(currentTab.id, { type: "GET_SELECTION" });
         if (resp && resp.has_selection && resp.selection) {
@@ -220,11 +259,18 @@ async function detectUserSelection() {
             const preview = currentSelection.length > 50 ? `${currentSelection.slice(0, 50)}...` : currentSelection;
             selectionPreview.textContent = `Selection (${currentSelection.length}c): "${preview}"`;
             selectionBanner.style.display = "flex";
+
+            if (contextSelectionText) {
+                contextSelectionText.textContent = `${currentSelection.length} chars selected`;
+            }
         } else {
+            currentSelection = "";
             selectionBanner.style.display = "none";
+            if (contextSelectionText) {
+                contextSelectionText.textContent = "No selection";
+            }
         }
     } catch {
-        // Content script might not be injected yet or not permitted
         selectionBanner.style.display = "none";
     }
 }
@@ -244,13 +290,11 @@ async function readCurrentPage() {
     readPageText.textContent = "Reading...";
 
     try {
-        // 1. Request page extraction from content script
         let pageData = null;
         try {
             pageData = await chrome.tabs.sendMessage(currentTab.id, { type: "GET_PAGE_CONTENT" });
         } catch (scriptErr) {
-            // Try injecting if needed
-            throw new Error("Could not connect to page. Please refresh the page and try again.");
+            throw new Error("Could not connect to page content script. Please refresh the page and try again.");
         }
 
         if (!pageData || pageData.error) {
@@ -261,7 +305,7 @@ async function readCurrentPage() {
         const pageId = `page_${Date.now()}`;
         currentPageId = pageId;
 
-        // 2. Transmit structured document to backend
+        // Transmit structured document to backend
         const ingestPayload = {
             page_id: pageId,
             title: pageData.title || currentTab.title || "Webpage",
@@ -288,12 +332,16 @@ async function readCurrentPage() {
             throw new Error(`Backend ingest failed (${res.status})`);
         }
 
-        const ingestResult = await res.json();
+        const chunksCount = (pageData.chunks || []).length;
+        if (pageStatusBadge) {
+            pageStatusBadge.textContent = `Ready (${chunksCount} chunks)`;
+            pageStatusBadge.className = "badge-status ready";
+        }
 
-        // 3. Populate Insights Tab
+        // Populate Insights Tab
         updateInsightsTab(ingestPayload);
 
-        // 4. Populate Links Tab
+        // Populate Links Tab
         scanAndRenderLinks(ingestPayload.links, ingestPayload.url);
 
         readPageText.textContent = "Page Ready";
@@ -336,85 +384,182 @@ function updateInsightsTab(data) {
 
 
 // ============================================================
-// ASKING MENTOR & INTELLIGENCE
+// PHASE 2: AI COMMAND CENTER ORCHESTRATION
 // ============================================================
 
-async function askMentor(overridePrompt = "", mode = "auto") {
-    const query = (overridePrompt || questionInput.value).trim();
-    if (!query && !currentSelection) {
-        showAlert("Please enter a question or click a prompt chip.", "error");
+function hideCommandStates() {
+    if (commandEmptyState) commandEmptyState.style.display = "none";
+    if (commandLoadingState) commandLoadingState.style.display = "none";
+    if (commandErrorBox) commandErrorBox.style.display = "none";
+    if (commandResultCard) commandResultCard.style.display = "none";
+}
+
+function showCommandEmptyState() {
+    hideCommandStates();
+    if (commandEmptyState) commandEmptyState.style.display = "flex";
+}
+
+function showCommandLoading(subtitle = "Gathering page context and orchestrating registered tool...") {
+    hideCommandStates();
+    if (commandLoadingState) {
+        commandLoadingState.style.display = "flex";
+        if (commandLoadingSubtitle) commandLoadingSubtitle.textContent = subtitle;
+    }
+}
+
+function showCommandError(errorMessage) {
+    hideCommandStates();
+    if (commandErrorBox) {
+        commandErrorBox.style.display = "flex";
+        if (commandErrorMsg) commandErrorMsg.textContent = errorMessage;
+    }
+}
+
+function clearCommandInputAndResults() {
+    if (commandInput) {
+        commandInput.value = "";
+        commandInput.focus();
+    }
+    showCommandEmptyState();
+}
+
+async function executeCommand(overrideInstruction = "", intentOverride = "auto") {
+    // Re-check selection
+    await detectUserSelection();
+
+    const rawInstruction = (overrideInstruction || commandInput?.value || "").trim();
+    if (!rawInstruction && !currentSelection) {
+        showCommandError("Please enter a command or select a suggested task chip.");
         return;
     }
 
-    if (isAsking) return;
-    clearAlert();
-    isAsking = true;
-    btnAskMentor.disabled = true;
-    askSpinner.style.display = "inline-block";
-    askBtnText.textContent = "Thinking...";
+    if (isExecutingCommand) return;
+    isExecutingCommand = true;
+
+    // Transition UI to loading state
+    showCommandLoading("Analyzing request & routing to registered tool...");
+    if (btnRunCommand) btnRunCommand.disabled = true;
+    if (commandSpinner) commandSpinner.style.display = "inline-block";
+    if (commandBtnText) commandBtnText.textContent = "Running...";
 
     try {
+        // If page has not been ingested yet and we are on an accessible tab, ingest first
+        if (!currentPageId && currentTab?.id && !isRestrictedUrl(currentTab.url)) {
+            showCommandLoading("Reading active webpage for context...");
+            try {
+                await readCurrentPage();
+            } catch (ingestErr) {
+                console.warn("Auto-read page warning:", ingestErr);
+            }
+        }
+
+        showCommandLoading("Executing tool & grounding response...");
+
+        const instructionToSend = rawInstruction || (currentSelection ? "Analyze this selected text" : "Summarize this page");
+
         const payload = {
-            query: query,
+            instruction: instructionToSend,
+            intent: intentOverride || "auto",
             page_id: currentPageId || "",
             selection_text: currentSelection || "",
-            mode: mode
+            page_url: currentTab?.url || "",
+            page_title: currentTab?.title || ""
         };
 
-        const res = await fetch(`${BACKEND_URL}/assistant/query`, {
+        const res = await fetch(`${BACKEND_URL}/command/execute`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
 
         if (!res.ok) {
-            throw new Error(`Assistant query failed (${res.status})`);
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.detail || `Command execution failed (${res.status})`);
         }
 
         const data = await res.json();
-        renderAnswer(data);
+        renderCommandResult(data);
 
     } catch (err) {
-        console.error("Ask mentor error:", err);
-        showAlert(err.message || "Could not retrieve answer from assistant.", "error");
+        console.error("Execute command error:", err);
+        showCommandError(err.message || "Could not execute command. Please verify backend server.");
     } finally {
-        isAsking = false;
-        btnAskMentor.disabled = false;
-        askSpinner.style.display = "none";
-        askBtnText.textContent = "Ask Mentor";
+        isExecutingCommand = false;
+        if (btnRunCommand) btnRunCommand.disabled = false;
+        if (commandSpinner) commandSpinner.style.display = "none";
+        if (commandBtnText) commandBtnText.innerHTML = "&#9889; Run";
     }
 }
 
-function renderAnswer(data) {
-    answerContainer.style.display = "flex";
+function renderCommandResult(data) {
+    hideCommandStates();
+    if (commandResultCard) commandResultCard.style.display = "flex";
 
-    const toolName = (data.tool || "Grounded Q&A").replace(/_/g, " ").toUpperCase();
-    const provider = data.provider === "groq" ? "Groq LLM" : "Deterministic Engine";
-    answerProviderBadge.textContent = `${toolName} (${provider})`;
+    // 1. Tool and Provider Badges
+    const toolName = (data.tool_name || data.intent || "assistant").replace(/_/g, " ").toUpperCase();
+    if (resultToolBadge) resultToolBadge.innerHTML = `&#9889; ${escapeHtml(toolName)}`;
+    if (resultProviderBadge) resultProviderBadge.textContent = data.provider || "System";
 
-    const text = data.text_response || data.answer || "No response provided.";
-    answerContent.textContent = text;
+    // 2. Action Summary
+    if (resultActionSummary) {
+        resultActionSummary.textContent = data.action_summary || "Executed task.";
+    }
 
-    // Render sources if available
-    sourcesArea.innerHTML = "";
-    const sources = data.sources || [];
-    if (sources.length > 0) {
-        sourcesArea.style.display = "flex";
-        const label = document.createElement("div");
-        label.style.fontSize = "10px";
-        label.style.fontWeight = "bold";
-        label.style.color = "var(--muted)";
-        label.textContent = "VERIFIED SOURCES:";
-        sourcesArea.appendChild(label);
+    // 3. Risk Assessment Banner (if security/link audit ran)
+    if (data.risk_assessment && resultRiskBanner) {
+        const risk = data.risk_assessment;
+        resultRiskBanner.style.display = "flex";
+        const levelLower = (risk.risk_level || "low").toLowerCase();
+        resultRiskBanner.className = `verdict-banner ${levelLower.includes("high") ? "high" : levelLower.includes("caution") || levelLower.includes("suspicious") || levelLower.includes("medium") ? "caution" : "low"}`;
+        if (resultRiskTitle) resultRiskTitle.textContent = risk.risk_level || "Risk Audit";
+        if (resultRiskSubtitle) resultRiskSubtitle.textContent = risk.findings && risk.findings[0] ? risk.findings[0] : "Assessment complete";
+        if (resultRiskScore) resultRiskScore.textContent = `${risk.risk_score || 0}/100`;
+    } else if (resultRiskBanner) {
+        resultRiskBanner.style.display = "none";
+    }
 
-        sources.slice(0, 3).forEach(s => {
-            const pill = document.createElement("div");
-            pill.className = "source-pill";
-            pill.innerHTML = `<strong>${escapeHtml(s.heading || "Page Section")}</strong>: ${escapeHtml(s.text ? s.text.slice(0, 140) + "..." : "")}`;
-            sourcesArea.appendChild(pill);
-        });
-    } else {
-        sourcesArea.style.display = "none";
+    // 4. Direct Answer
+    if (resultAnswer) {
+        resultAnswer.textContent = data.answer || "No output provided.";
+    }
+
+    // 5. Key Points
+    if (resultKeyPointsContainer && resultKeyPointsList) {
+        const points = data.key_points || [];
+        if (points.length > 0) {
+            resultKeyPointsContainer.style.display = "block";
+            resultKeyPointsList.innerHTML = "";
+            points.forEach(pt => {
+                const item = document.createElement("div");
+                item.className = "result-key-point-item";
+                item.innerHTML = `<span class="result-key-point-bullet">&#9670;</span><span>${escapeHtml(pt)}</span>`;
+                resultKeyPointsList.appendChild(item);
+            });
+        } else {
+            resultKeyPointsContainer.style.display = "none";
+        }
+    }
+
+    // 6. Grounded Evidence Cards
+    if (resultEvidenceContainer && resultEvidenceCards) {
+        const evidence = data.evidence || [];
+        if (evidence.length > 0) {
+            resultEvidenceContainer.style.display = "block";
+            resultEvidenceCards.innerHTML = "";
+            evidence.slice(0, 4).forEach(ev => {
+                const card = document.createElement("div");
+                card.className = "evidence-card";
+                card.innerHTML = `<strong>${escapeHtml(ev.heading || "Page Context")}</strong><span>${escapeHtml(ev.quote || "")}</span>`;
+                resultEvidenceCards.appendChild(card);
+            });
+        } else {
+            resultEvidenceContainer.style.display = "none";
+        }
+    }
+
+    // 7. Limitations Notice
+    if (resultLimitations && resultLimitationsText) {
+        resultLimitationsText.textContent = data.limitations || "Grounded strictly on visible webpage context.";
     }
 }
 
@@ -510,7 +655,6 @@ async function scanOpenGmailEmail() {
 
         gmailBtnText.textContent = "Analyzing Tactics...";
 
-        // Use the preserved ScamShield endpoint
         const response = await fetch(`${BACKEND_URL}/scamshield/analyze-text`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -655,50 +799,33 @@ function renderLinksList(results = null) {
     }
 
     if (!filtered.length) {
-        linksListContainer.innerHTML = `<div style="font-size: 11px; color: var(--muted); text-align: center; padding: 16px;">No ${currentLinkFilter === "all" ? "" : currentLinkFilter} links to display.</div>`;
+        linksListContainer.innerHTML = '<div style="font-size: 11px; color: var(--muted); text-align: center; padding: 16px;">No links match current filter.</div>';
         return;
     }
 
-    filtered.slice(0, 50).forEach(link => {
+    filtered.forEach(link => {
         const row = document.createElement("div");
         row.className = "link-row";
 
-        const riskClass = (link.risk || "low").toLowerCase();
-        const top = document.createElement("div");
-        top.className = "link-row-top";
+        const riskClass = (link.risk || "Low").toLowerCase();
+        const reasonsHtml = (link.reasons || []).map(r => `<div class="link-reason">&#9888; ${escapeHtml(r)}</div>`).join("");
 
-        const label = document.createElement("span");
-        label.className = "link-label";
-        label.textContent = link.text || link.url || "Untitled link";
-
-        const badge = document.createElement("span");
-        badge.className = `badge-risk ${riskClass}`;
-        badge.textContent = link.risk || "Low";
-
-        top.appendChild(label);
-        top.appendChild(badge);
-        row.appendChild(top);
-
-        const urlDiv = document.createElement("div");
-        urlDiv.className = "link-url";
-        urlDiv.textContent = link.url;
-        row.appendChild(urlDiv);
-
-        if (link.reasons && link.reasons.length && link.risk !== "Low") {
-            const reasonDiv = document.createElement("div");
-            reasonDiv.className = "link-reason";
-            reasonDiv.textContent = link.reasons[0];
-            row.appendChild(reasonDiv);
-        }
-
+        row.innerHTML = `
+            <div class="link-row-top">
+                <div class="link-label" title="${escapeHtml(link.text || 'Link')}">${escapeHtml(link.text || 'Link')}</div>
+                <span class="badge-risk ${riskClass}">${escapeHtml(link.risk || "Low")}</span>
+            </div>
+            <div class="link-url" title="${escapeHtml(link.url)}">${escapeHtml(link.url)}</div>
+            ${reasonsHtml}
+        `;
         linksListContainer.appendChild(row);
     });
 }
 
 async function checkCustomUrl() {
-    const url = customLinkInput.value.trim();
+    const url = (customLinkInput?.value || "").trim();
     if (!url) {
-        showAlert("Enter a URL to inspect.", "error");
+        showAlert("Please enter a URL to check.", "error");
         return;
     }
 
@@ -709,14 +836,13 @@ async function checkCustomUrl() {
             body: JSON.stringify({ url: url, page_url: currentTab?.url || "" })
         });
 
-        if (!res.ok) throw new Error("Hover check failed");
+        if (!res.ok) throw new Error("Custom link check failed");
 
         const data = await res.json();
-        const result = data.result || {};
-
-        showAlert(`Link Inspection for ${result.hostname || url}: Risk is ${result.risk}. ${result.reasons ? result.reasons.join(", ") : ""}`, result.risk === "High" ? "error" : "info");
-
-    } catch (err) {
+        if (data.success && data.analysis) {
+            renderLinksList([data.analysis]);
+        }
+    } catch {
         showAlert("Failed to inspect custom link.", "error");
     }
 }
@@ -735,41 +861,47 @@ function setupEventListeners() {
         });
     });
 
-    // Read Page
+    // Read Page Button
     btnReadPage?.addEventListener("click", readCurrentPage);
 
-    // Ask Mentor
-    btnAskMentor?.addEventListener("click", () => askMentor());
+    // Command Center Run Button
+    btnRunCommand?.addEventListener("click", () => executeCommand());
 
-    // Enter key support for textarea
-    questionInput?.addEventListener("keydown", (e) => {
+    // Enter key support for command input
+    commandInput?.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            askMentor();
+            executeCommand();
         }
     });
 
-    // Quick Prompt Chips
-    promptChips.forEach(chip => {
+    // Clear command input & reset to empty state
+    btnClearCommand?.addEventListener("click", clearCommandInputAndResults);
+    btnNewTask?.addEventListener("click", clearCommandInputAndResults);
+
+    // Suggested Task Chips
+    commandChips.forEach(chip => {
         chip.addEventListener("click", () => {
-            const prompt = chip.getAttribute("data-prompt");
-            if (prompt) {
-                questionInput.value = prompt;
-                askMentor(prompt);
-            }
+            const prompt = chip.getAttribute("data-prompt") || "";
+            const task = chip.getAttribute("data-task") || "auto";
+            if (commandInput) commandInput.value = prompt;
+            executeCommand(prompt, task);
         });
     });
 
     // Selection Banner Actions
     btnExplainSelection?.addEventListener("click", () => {
-        switchTab("panelAsk");
-        questionInput.value = `Explain this selection: "${currentSelection.slice(0, 80)}"`;
-        askMentor(`Explain this highlighted text in simple plain language: "${currentSelection}"`, "explain");
+        switchTab("panelCommand");
+        const prompt = `Explain this selection: "${currentSelection.slice(0, 80)}"`;
+        if (commandInput) commandInput.value = prompt;
+        executeCommand("Explain this highlighted text in simple plain language", "explain_page_content");
     });
 
     btnAuditSelection?.addEventListener("click", () => {
-        switchTab("panelSecurity");
-        auditSelectionSecurity(currentSelection);
+        switchTab("panelCommand");
+        const prompt = `Audit selection for security: "${currentSelection.slice(0, 80)}"`;
+        if (commandInput) commandInput.value = prompt;
+        executeCommand("Analyze this selected text for security and scam risks", "analyze_selected_text");
     });
 
     btnAuditSelectionDirect?.addEventListener("click", () => {
@@ -790,7 +922,7 @@ function setupEventListeners() {
         }
     });
 
-    // Link Filters
+    // Link Filter Chips
     document.getElementById("filterLinksAll")?.addEventListener("click", () => {
         currentLinkFilter = "all";
         renderLinksList();
@@ -806,22 +938,22 @@ function setupEventListeners() {
 
     // Insights Direct Summary Action
     btnSummaryDirect?.addEventListener("click", () => {
-        switchTab("panelAsk");
-        questionInput.value = "Summarize this page";
-        askMentor("Summarize this page in 3 concise bullet points", "summary");
+        switchTab("panelCommand");
+        if (commandInput) commandInput.value = "Summarize this page";
+        executeCommand("Summarize this page with core takeaways", "summarize_page");
     });
 
-    // Copy to clipboard
-    btnCopyAnswer?.addEventListener("click", () => {
-        const text = answerContent.textContent;
+    // Copy command result
+    btnCopyCommandResult?.addEventListener("click", () => {
+        const text = resultAnswer?.textContent;
         if (!text) return;
         navigator.clipboard.writeText(text).then(() => {
-            const orig = btnCopyAnswer.textContent;
-            btnCopyAnswer.textContent = "Copied!";
-            setTimeout(() => { btnCopyAnswer.textContent = orig; }, 1500);
+            const orig = btnCopyCommandResult.textContent;
+            btnCopyCommandResult.textContent = "Copied!";
+            setTimeout(() => { btnCopyCommandResult.textContent = orig; }, 1500);
         });
     });
 }
 
-// Start
+// Start on DOM ready
 document.addEventListener("DOMContentLoaded", initialize);
