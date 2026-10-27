@@ -2496,9 +2496,36 @@ def scamshield_analyze_text(request: ScamShieldTextRequest):
 # UNIVERSAL ASSISTANT & ORCHESTRATOR
 # ============================================================
 
-from app.services.intent_router import execute_tool_request
+from app.services.intent_router import execute_tool_request, execute_command
 from app.services.security_service import analyze_security_text, analyze_page_security
-from app.schemas import AssistantQueryRequest, SecurityTextRequest, PageSummaryRequest
+from app.schemas import (
+    AssistantQueryRequest,
+    SecurityTextRequest,
+    PageSummaryRequest,
+    CommandExecutionRequest,
+    CommandExecutionResponse
+)
+
+
+@app.post("/command/execute", response_model=CommandExecutionResponse)
+@app.post("/assistant/command", response_model=CommandExecutionResponse)
+async def command_execute_endpoint(request: CommandExecutionRequest):
+    """
+    Phase 2 AI Command Center endpoint:
+    Accepts natural-language user instruction, gathers page context,
+    invokes appropriate registered tool, and returns a verified, structured response.
+    """
+    page = get_page(request.page_id) if request.page_id else None
+    return await execute_command(
+        instruction=request.instruction,
+        page=page,
+        selection_text=request.selection_text,
+        intent_override=request.intent,
+        page_url=request.page_url,
+        page_title=request.page_title,
+        groq_api_key=GROQ_API_KEY,
+        groq_model=GROQ_MODEL
+    )
 
 
 @app.post("/assistant/query")

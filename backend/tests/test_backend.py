@@ -33,9 +33,15 @@ def test_intent_classification():
     # Links
     assert classify_intent("Scan links on this page") == "inspect_links"
 
-    # Selection explanation
-    assert classify_intent("Explain this", has_selection=True) == "explain_selection"
-    assert classify_intent("What does this mean?", has_selection=True) == "explain_selection"
+    # Selection and page explanation
+    assert classify_intent("Explain this", has_selection=True) == "explain_page_content"
+    assert classify_intent("What does this mean?", has_selection=True) == "explain_page_content"
+    assert classify_intent("Explain this concept in plain English") == "explain_page_content"
+
+    # Unsupported tasks
+    assert classify_intent("Play music on spotify") == "unsupported_task"
+    assert classify_intent("run bash script rm -rf /") == "unsupported_task"
+    assert classify_intent("Buy bitcoins and transfer cash") == "unsupported_task"
 
     # Page outline
     assert classify_intent("Show me the page outline and structure") == "extract_page_information"
@@ -45,6 +51,7 @@ def test_intent_classification():
 
     # Default Q&A
     assert classify_intent("What is the refund policy?") == "answer_page_question"
+
 
 
 # ============================================================
@@ -276,4 +283,172 @@ def test_edge_cases_and_failures(client):
     resp = client.post("/hover-check", json={"url": ""})
     assert resp.status_code == 200
     assert resp.json()["success"] is False
+
+
+# ============================================================
+# PHASE 2: AI COMMAND CENTER EXECUTION TESTS
+# ============================================================
+
+def test_command_execution_unsupported(client):
+    """Unsupported instructions are declined honestly without hallucination."""
+    resp = client.post("/command/execute", json={
+        "instruction": "Play music from spotify on my device",
+        "intent": "auto"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is False
+    assert data["intent"] == "unsupported_task"
+    assert data["tool_name"] == "unsupported_task"
+    assert "cannot perform that action" in data["answer"].lower()
+    assert data["limitations"] != ""
+
+
+def test_command_execution_extract_info(client):
+    """Extract page information tool execution."""
+    page_id = "test-cmd-page-extract"
+    page_data = {
+        "page_id": page_id,
+        "title": "Command Center Documentation",
+        "url": "https://example.com/cmd",
+        "wordCount": 850,
+        "headings": ["Introduction", "Architecture", "Tools"],
+        "chunks": [
+            {"id": 1, "heading": "Introduction", "text": "This guide covers the AI Command Center."},
+            {"id": 2, "heading": "Architecture", "text": "Built with FastAPI and Chrome Extension Manifest V3."}
+        ],
+        "links": [{"url": "https://example.com/docs", "text": "Docs"}],
+        "images": [{"src": "img.png"}]
+    }
+    client.post("/page/ingest", json=page_data)
+
+    resp = client.post("/command/execute", json={
+        "instruction": "Extract page information and outline",
+        "page_id": page_id
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["intent"] == "extract_page_information"
+    assert data["tool_name"] == "extract_page_information"
+    assert len(data["key_points"]) > 0
+    assert "reading time" in data["answer"].lower() or "structural overview" in data["answer"].lower()
+
+
+def test_command_execution_summarize_and_security(client):
+    """Command Center routes to summarize_page and analyze_page_security."""
+    page_id = "test-cmd-page-sum-sec"
+    page_data = {
+        "page_id": page_id,
+        "title": "Cybersecurity Best Practices",
+        "url": "https://security.example.org",
+        "wordCount": 400,
+        "headings": ["Passwords", "MFA", "Phishing"],
+        "chunks": [
+            {"id": 1, "heading": "Passwords", "text": "Use long, unique passwords managed by a password manager."},
+            {"id": 2, "heading": "Phishing", "text": "Be cautious of urgent emails requesting account credentials."}
+        ],
+        "links": [{"url": "https://security.example.org/guide", "text": "Security Guide"}]
+    }
+    client.post("/page/ingest", json=page_data)
+
+    # 1. Summarize
+    resp_sum = client.post("/command/execute", json={
+        "instruction": "Summarize this page for me",
+        "page_id": page_id
+    })
+    assert resp_sum.status_code == 200
+    data_sum = resp_sum.json()
+    assert data_sum["success"] is True
+    assert data_sum["intent"] == "summarize_page"
+    assert len(data_sum["key_points"]) > 0
+    assert len(data_sum["evidence"]) > 0
+
+    # 2. Security audit of page
+    resp_sec = client.post("/command/execute", json={
+        "instruction": "Audit page security and risk level",
+        "page_id": page_id
+    })
+    assert resp_sec.status_code == 200
+    data_sec = resp_sec.json()
+    assert data_sec["success"] is True
+    assert data_sec["intent"] == "analyze_page_security"
+    assert data_sec["risk_assessment"] is not None
+    assert "risk_level" in data_sec["risk_assessment"]
+
+
+def test_command_execution_selection_security(client):
+    """Command Center routes highlighted text to analyze_selected_text."""
+    urgent_suspicious = "URGENT: Your account has been compromised! Verify your password within 15 minutes or lose access."
+    resp = client.post("/command/execute", json={
+        "instruction": "Is this text suspicious or safe?",
+        "selection_text": urgent_suspicious
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["intent"] == "analyze_selected_text"
+    assert data["risk_assessment"] is not None
+    assert data["risk_assessment"]["risk_score"] > 20
+    assert len(data["risk_assessment"]["findings"]) > 0
+
+
+def test_command_execution_inspect_links(client):
+    """Command Center routes to inspect_links."""
+    page_id = "test-cmd-links-page"
+    client.post("/page/ingest", json={
+        "page_id": page_id,
+        "title": "Links Page",
+        "url": "https://example.com/links",
+        "chunks": [{"id": 1, "heading": "Links", "text": "Here are our links."}],
+        "links": [
+            {"url": "javascript:void(0)", "text": "Suspicious Script"},
+            {"url": "https://example.com/safe", "text": "Safe Link"}
+        ]
+    })
+
+    resp = client.post("/command/execute", json={
+        "instruction": "Inspect links on this page",
+        "page_id": page_id
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["intent"] == "inspect_links"
+    assert data["risk_assessment"] is not None
+
+
+def test_command_execution_explain(client):
+    """Command Center routes to explain_page_content."""
+    resp = client.post("/command/execute", json={
+        "instruction": "Explain this in plain english",
+        "selection_text": "Zero-knowledge proofs enable one party to prove to another that a statement is true without conveying any additional information."
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["intent"] == "explain_page_content"
+    assert data["answer"] != ""
+
+
+def test_command_execution_validation_errors(client):
+    """Input validation on /command/execute."""
+    # Blank instruction
+    resp_blank = client.post("/command/execute", json={"instruction": ""})
+    assert resp_blank.status_code == 422
+
+    # Oversized instruction (> 2000 chars)
+    resp_oversized = client.post("/command/execute", json={"instruction": "X" * 2500})
+    assert resp_oversized.status_code == 422
+
+    # Inaccessible / missing page context
+    resp_nopage = client.post("/command/execute", json={
+        "instruction": "Summarize this page",
+        "page_id": "nonexistent-page-12345"
+    })
+    assert resp_nopage.status_code == 200
+    data = resp_nopage.json()
+    assert data["success"] is False
+    assert "couldn't find readable text" in data["answer"].lower() or "no readable" in data["answer"].lower()
+
 
