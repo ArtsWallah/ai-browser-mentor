@@ -1,4 +1,4 @@
-﻿(() => {
+(() => {
   "use strict";
 
   const API_BASE_URL = "https://ai-browser-mentor.onrender.com";
@@ -4328,6 +4328,20 @@ if (S.hoverEnabled) {
       }
 
 
+
+      if (t === "GET_SELECTION") {
+        try {
+          const sel = window.getSelection() ? window.getSelection().toString().trim() : "";
+          send({
+            success: true,
+            has_selection: Boolean(sel),
+            selection: sel.slice(0, 15000)
+          });
+        } catch (e) {
+          send({ success: false, selection: "", error: e?.message });
+        }
+        return false;
+      }
 
       if (
         t ===
