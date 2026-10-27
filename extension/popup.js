@@ -868,16 +868,54 @@ function renderSecurityVerdict(audit) {
         findingsList.appendChild(item);
     });
 
-    // Render ScamShield tactics if available
+    // Render ScamShield explainable tactics if available
     const scamshieldData = audit.text_analysis?.scamshield;
     if (scamshieldData && scamshieldData.results) {
         scamshieldSection.style.display = "block";
         tacticsGrid.innerHTML = "";
-        scamshieldData.results.forEach(t => {
-            const tag = document.createElement("div");
-            tag.className = `tactic-tag ${t.detected ? "detected" : ""}`;
-            tag.innerHTML = `<span>${escapeHtml(t.tactic)}</span><span>${t.detected ? "&#9888; Yes" : "&#10003; No"}</span>`;
-            tacticsGrid.appendChild(tag);
+
+        // Sort detected tactics first, then by score descending
+        const sortedResults = [...scamshieldData.results].sort((a, b) => {
+            if (a.detected && !b.detected) return -1;
+            if (!a.detected && b.detected) return 1;
+            return (b.score || 0) - (a.score || 0);
+        });
+
+        sortedResults.forEach(t => {
+            const card = document.createElement("div");
+            card.className = `tactic-explain-card ${t.detected ? "detected" : ""}`;
+
+            let badgeHtml = "";
+            if (!t.available) {
+                badgeHtml = `<span class="tactic-badge unavailable">Unavailable</span>`;
+            } else if (t.detected) {
+                badgeHtml = `<span class="tactic-badge detected">&#9888; Flagged (${(t.score * 100).toFixed(0)}%)</span>`;
+            } else {
+                badgeHtml = `<span class="tactic-badge benign">&#10003; Below Thresh (${(t.score * 100).toFixed(0)}%)</span>`;
+            }
+
+            let spansHtml = "";
+            const spans = t.evidence_spans || [];
+            if (spans.length > 0) {
+                spansHtml = `
+                    <div class="tactic-spans-container">
+                        <span style="font-size: 9px; color: var(--muted); width: 100%; font-weight: 600;">Defensible Evidence Spans (Contribution to Log-Odds):</span>
+                        ${spans.map(s => `<span class="tactic-span-pill" title="Feature: ${escapeHtml(s.feature)} (weight: ${s.weight})">"${escapeHtml(s.text)}" (+${s.contribution})</span>`).join("")}
+                    </div>
+                `;
+            }
+
+            card.innerHTML = `
+                <div class="tactic-card-header">
+                    <span class="tactic-name">${escapeHtml(t.tactic.replace(/_/g, " "))}</span>
+                    ${badgeHtml}
+                </div>
+                <div class="tactic-explanation">${escapeHtml(t.explanation || "No explanation available.")}</div>
+                ${spansHtml}
+                <div class="tactic-uncertainty">${escapeHtml(t.uncertainty_note || "Experimental model score. Not a calibrated probability of fraud.")}</div>
+            `;
+
+            tacticsGrid.appendChild(card);
         });
     } else {
         scamshieldSection.style.display = "none";

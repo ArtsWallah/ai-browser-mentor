@@ -179,3 +179,49 @@ class ModelRegistryResponse(BaseModel):
     local_llm_detected: bool = False
     local_llm_url: str = ""
     cloud_configured: bool = False
+
+
+# ============================================================
+# EXPLAINABLE SCAMSHIELD SCHEMAS
+# ============================================================
+
+class ScamShieldEvidenceSpan(BaseModel):
+    text: str
+    start: int
+    end: int
+    feature: str
+    weight: float
+    contribution: float
+
+
+class ScamShieldTopFeature(BaseModel):
+    feature: str
+    weight: float
+    contribution: float
+    tfidf_value: float = 0.0
+
+
+class ScamShieldTacticFinding(BaseModel):
+    tactic: str
+    available: bool = True
+    detected: bool | None = False
+    score: float | None = None
+    threshold: float | None = 0.5
+    evidence_spans: list[ScamShieldEvidenceSpan] = Field(default_factory=list)
+    top_features: list[ScamShieldTopFeature] = Field(default_factory=list)
+    explanation: str = ""
+    explanation_method: str = "linear_feature_attribution"
+    uncertainty_note: str = ""
+
+
+class ScamShieldAnalysisResponse(BaseModel):
+    success: bool = True
+    model: str = "scamshield-tfidf-multilabel"
+    experimental: bool = True
+    detected_tactics: list[str] = Field(default_factory=list)
+    results: list[ScamShieldTacticFinding] = Field(default_factory=list)
+    tactic_findings: list[ScamShieldTacticFinding] = Field(default_factory=list)
+    explanation_method: str = "linear_feature_attribution"
+    explanation_limitations: str = ""
+    calibrated_probability_note: str = ""
+    disclaimer: str = ""

@@ -982,6 +982,89 @@
             font-weight: 600;
         }
 
+        .tactic-explain-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 6px;
+            font-size: 11px;
+        }
+
+        .tactic-explain-card.detected {
+            border-color: rgba(255, 120, 142, 0.4);
+            background: rgba(255, 120, 142, 0.05);
+        }
+
+        .tactic-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tactic-name {
+            font-weight: 700;
+            color: var(--text);
+            text-transform: capitalize;
+        }
+
+        .tactic-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .tactic-badge.detected {
+            background: var(--danger-bg);
+            color: var(--danger);
+        }
+
+        .tactic-badge.benign {
+            background: var(--success-bg);
+            color: var(--success);
+        }
+
+        .tactic-badge.unavailable {
+            background: var(--surface-raised);
+            color: var(--muted);
+        }
+
+        .tactic-explanation {
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        .tactic-spans-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 2px;
+        }
+
+        .tactic-span-pill {
+            font-size: 10px;
+            font-family: monospace;
+            background: rgba(98, 217, 245, 0.1);
+            border: 1px solid rgba(98, 217, 245, 0.3);
+            color: var(--cyan);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .tactic-uncertainty {
+            font-size: 9px;
+            color: var(--muted);
+            font-style: italic;
+            border-top: 1px dashed var(--border);
+            padding-top: 4px;
+            margin-top: 2px;
+        }
+
         /* LINKS TAB STYLES */
         .links-summary-bar {
             display: grid;

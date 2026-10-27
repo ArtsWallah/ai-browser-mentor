@@ -2471,13 +2471,14 @@ async def startup():
 # ============================================================
 
 from app.scamshield_service import analyze_message
+from app.schemas import ScamShieldAnalysisResponse
 
 
 class ScamShieldTextRequest(BaseModel):
     message: str = Field(min_length=1, max_length=10000)
 
 
-@app.post("/scamshield/analyze-text")
+@app.post("/scamshield/analyze-text", response_model=ScamShieldAnalysisResponse)
 def scamshield_analyze_text(request: ScamShieldTextRequest):
     message = request.message.strip()
 
@@ -2487,6 +2488,9 @@ def scamshield_analyze_text(request: ScamShieldTextRequest):
 
     try:
         return analyze_message(message)
+    except ValueError as error:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail=str(error)) from error
     except RuntimeError as error:
         from fastapi import HTTPException
         raise HTTPException(status_code=503, detail=str(error)) from error
