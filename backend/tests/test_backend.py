@@ -803,5 +803,131 @@ def test_workspace_query_local_only(client):
     assert "groq" not in data["provider"].lower()
 
 
+# ============================================================
+# EXPLAINABLE SCAMSHIELD TACTIC DETECTION TESTS
+# ============================================================
+
+def test_scamshield_evidence_span_validity(client):
+    """Evidence spans must be non-empty, strictly match message substrings at specified offsets, and have positive contribution."""
+    message = "URGENT: Your account has been suspended! You must verify credentials immediately within 24 hours."
+    resp = client.post("/scamshield/analyze-text", json={"message": message})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert "urgency" in data["detected_tactics"]
+
+    urgency_result = next(r for r in data["results"] if r["tactic"] == "urgency")
+    assert urgency_result["detected"] is True
+    assert urgency_result["score"] >= urgency_result["threshold"]
+    assert urgency_result["explanation_method"] == "linear_feature_attribution"
+    assert len(urgency_result["evidence_spans"]) > 0
+
+    # Strict span validity verification
+    for span in urgency_result["evidence_spans"]:
+        s, e = span["start"], span["end"]
+        assert 0 <= s < e <= len(message)
+        # Sliced substring must match span text exactly (no hallucinated/fabricated text)
+        assert message[s:e] == span["text"]
+        # Contribution and weight must be positive
+        assert span["weight"] > 0
+        assert span["contribution"] > 0
+        assert span["feature"] != ""
+
+
+def test_scamshield_unavailable_explanations(client):
+    """When a tactic classifier is missing from the artifact (e.g. 'fear'), available is False and explanation reflects absence."""
+    resp = client.post("/scamshield/analyze-text", json={"message": "Be afraid of this dangerous penalty."})
+    assert resp.status_code == 200
+    data = resp.json()
+
+    fear_result = next(r for r in data["results"] if r["tactic"] == "fear")
+    assert fear_result["available"] is False
+    assert fear_result["detected"] is None
+    assert fear_result["score"] is None
+    assert fear_result["explanation_method"] == "unavailable"
+    assert fear_result["evidence_spans"] == []
+    assert "unavailable" in fear_result["explanation"].lower()
+
+
+def test_scamshield_empty_and_whitespace_inputs(client):
+    """Empty or whitespace-only inputs are rejected with HTTP 422."""
+    # Blank string
+    resp1 = client.post("/scamshield/analyze-text", json={"message": ""})
+    assert resp1.status_code == 422
+
+    # Whitespace only
+    resp2 = client.post("/scamshield/analyze-text", json={"message": "   \n\t  "})
+    assert resp2.status_code == 422
+
+    # Missing field
+    resp3 = client.post("/scamshield/analyze-text", json={})
+    assert resp3.status_code == 422
+
+
+def test_scamshield_multi_tactic_outputs(client):
+    """Messages containing cues for multiple tactics trigger multiple distinct tactic detections with independent explanations."""
+    msg = "URGENT NOTICE: Congratulations! You won a $1000 prize. Claim your reward immediately within 24 hours."
+    resp = client.post("/scamshield/analyze-text", json={"message": msg})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    # Urgency and reward_lure should both trigger
+    assert len(data["detected_tactics"]) >= 2
+    assert "urgency" in data["detected_tactics"]
+    assert "reward_lure" in data["detected_tactics"]
+
+    # Each detected tactic must have its own evidence spans
+    urgency_res = next(r for r in data["results"] if r["tactic"] == "urgency")
+    reward_res = next(r for r in data["results"] if r["tactic"] == "reward_lure")
+    assert len(urgency_res["evidence_spans"]) > 0
+    assert len(reward_res["evidence_spans"]) > 0
+    assert urgency_res["explanation"] != reward_res["explanation"]
+
+
+def test_scamshield_backward_compatibility_schema(client):
+    """All legacy fields (success, model, experimental, detected_tactics, results, disclaimer) are preserved."""
+    resp = client.post("/scamshield/analyze-text", json={"message": "Hello world, meeting at 3pm."})
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # Root contract
+    assert data["success"] is True
+    assert data["model"] == "scamshield-tfidf-multilabel"
+    assert data["experimental"] is True
+    assert isinstance(data["detected_tactics"], list)
+    assert isinstance(data["results"], list)
+    assert len(data["results"]) == 8
+    assert "disclaimer" in data
+
+    # Tactic item contract
+    for item in data["results"]:
+        assert "tactic" in item
+        assert "available" in item
+        assert "detected" in item
+        assert "score" in item
+        if item["available"]:
+            assert isinstance(item["detected"], bool)
+            assert isinstance(item["score"], float)
+
+
+def test_scamshield_uncalibrated_score_documentation(client):
+    """Responses clearly distinguish experimental model scores from calibrated probabilities of fraud."""
+    resp = client.post("/scamshield/analyze-text", json={"message": "Verify account details."})
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert "calibrated_probability_note" in data
+    assert "not real-world" in data["calibrated_probability_note"].lower() or "not calibrated" in data["calibrated_probability_note"].lower()
+    assert "explanation_limitations" in data
+
+    for item in data["results"]:
+        assert "uncertainty_note" in item
+        if item["available"]:
+            assert "not establish whether an entire message is genuine or fraudulent" in item["uncertainty_note"].lower()
+        else:
+            assert "missing" in item["uncertainty_note"].lower() or "unconfigured" in item["uncertainty_note"].lower()
+
+
+
 
 
