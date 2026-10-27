@@ -1,6 +1,12 @@
 (() => {
   "use strict";
 
+  // Prevent duplicate execution if injected multiple times
+  if (window.__AI_BROWSER_MENTOR_INJECTED__) {
+    return;
+  }
+  window.__AI_BROWSER_MENTOR_INJECTED__ = true;
+
   const API_BASE_URL = "https://ai-browser-mentor.onrender.com";
   const HOST_ID = "ai-browser-mentor-v3";
   const HOVER_ID = "ai-browser-mentor-hover-v3";
@@ -940,6 +946,10 @@ const liveText = clean(
         (a,index) => ({
           index,
           text:label(a),
+          url:
+            a.href ||
+            a.getAttribute("href") ||
+            "",
           href:
             a.href ||
             a.getAttribute("href") ||
@@ -4294,6 +4304,11 @@ if (S.hoverEnabled) {
 
       const t =
         m?.type;
+
+      if (t === "PING") {
+        send({ success: true, pong: true, url: location.href });
+        return false;
+      }
 
       if (t === "SCAMSHIELD_GET_GMAIL_EMAIL") {
         try {

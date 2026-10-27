@@ -2591,3 +2591,47 @@ async def page_summary_endpoint(request: PageSummaryRequest):
         groq_model=GROQ_MODEL
     )
 
+
+# ============================================================
+# PHASE 3: RESEARCH WORKSPACE ENDPOINTS
+# ============================================================
+
+from app.schemas import (
+    WorkspaceQueryRequest,
+    WorkspaceQueryResponse,
+    WorkspaceCompareRequest,
+    WorkspaceCompareResponse
+)
+from app.services.workspace_service import (
+    query_workspace_sources,
+    compare_workspace_sources
+)
+
+
+@app.post("/workspace/query", response_model=WorkspaceQueryResponse)
+async def workspace_query_endpoint(request: WorkspaceQueryRequest):
+    """
+    Phase 3: Persistent Multi-Tab Research Workspace Query.
+    Executes cross-source passage retrieval and synthesizes answers
+    with source titles, URLs, and supporting quotes.
+    """
+    return await query_workspace_sources(
+        request=request,
+        groq_api_key=GROQ_API_KEY,
+        groq_model=GROQ_MODEL
+    )
+
+
+@app.post("/workspace/compare", response_model=WorkspaceCompareResponse)
+async def workspace_compare_endpoint(request: WorkspaceCompareRequest):
+    """
+    Phase 3: Compare saved sources in a research workspace.
+    Identifies agreements, disagreements, and unverified claims.
+    """
+    return await compare_workspace_sources(
+        request=request,
+        groq_api_key=GROQ_API_KEY,
+        groq_model=GROQ_MODEL
+    )
+
+

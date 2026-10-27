@@ -81,3 +81,66 @@ class CommandExecutionResponse(BaseModel):
     limitations: str = ""
     provider: str = ""
     error: str | None = None
+
+
+# ============================================================
+# PHASE 3: RESEARCH WORKSPACE SCHEMAS
+# ============================================================
+
+class WorkspaceSourceItem(BaseModel):
+    id: str = Field(default="", max_length=128)
+    title: str = Field(default="", max_length=512)
+    url: str = Field(default="", max_length=2048)
+    hostname: str = Field(default="", max_length=256)
+    collected_at: str = Field(default="", max_length=64)
+    text: str = Field(default="", max_length=30000)
+    excerpt: str = Field(default="", max_length=1000)
+    headings: list[str] = Field(default_factory=list)
+
+
+class WorkspaceCitation(BaseModel):
+    source_id: str = ""
+    source_title: str = ""
+    url: str = ""
+    quote: str = ""
+    relevance_score: float = 0.0
+
+
+class WorkspaceQueryRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=2000)
+    workspace_name: str = Field(default="Default Workspace", max_length=256)
+    sources: list[WorkspaceSourceItem] = Field(default_factory=list)
+    top_k: int = Field(default=6, ge=1, le=20)
+
+
+class WorkspaceQueryResponse(BaseModel):
+    success: bool = True
+    workspace_name: str = ""
+    query: str = ""
+    answer: str = ""
+    key_findings: list[str] = Field(default_factory=list)
+    citations: list[WorkspaceCitation] = Field(default_factory=list)
+    insufficient_evidence: bool = False
+    limitations: str = ""
+    provider: str = ""
+    error: str | None = None
+
+
+class WorkspaceCompareRequest(BaseModel):
+    workspace_name: str = Field(default="Default Workspace", max_length=256)
+    focus_topic: str = Field(default="", max_length=1000)
+    sources: list[WorkspaceSourceItem] = Field(default_factory=list)
+
+
+class WorkspaceCompareResponse(BaseModel):
+    success: bool = True
+    workspace_name: str = ""
+    focus_topic: str = ""
+    comparison_summary: str = ""
+    agreements: list[str] = Field(default_factory=list)
+    disagreements: list[str] = Field(default_factory=list)
+    unverified_claims: list[str] = Field(default_factory=list)
+    citations: list[WorkspaceCitation] = Field(default_factory=list)
+    limitations: str = ""
+    provider: str = ""
+    error: str | None = None
