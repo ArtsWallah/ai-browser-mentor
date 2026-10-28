@@ -1139,6 +1139,180 @@ def test_summarize_page_with_empty_headings_and_short_content(client):
     assert len(headings) == len(set(headings))
 
 
+# ============================================================
+# EXPLANATION & LOADING STATE REGRESSION TESTS
+# ============================================================
+
+def test_explain_page_loading_and_offline_state(client):
+    """Verify explain_page_content halts on loading/offline pages without generating fake summaries."""
+    page_id = "test-gmail-loading-explain"
+    page_data = {
+        "page_id": page_id,
+        "url": "https://mail.google.com/mail/u/0/#inbox",
+        "title": "Gmail",
+        "content": "This is taking longer than usual. Try reloading the page\n\nGemini is offline",
+        "headings": ["Gmail", "Loading"],
+        "chunks": [
+            {
+                "id": 1,
+                "heading": "SEARCH",
+                "text": ""
+            },
+            {
+                "id": 2,
+                "heading": "LABELS",
+                "text": ""
+            },
+            {
+                "id": 3,
+                "heading": "Loading",
+                "text": "This is taking longer than usual. Try reloading the page. Gemini is offline."
+            }
+        ],
+        "links": [],
+        "images": []
+    }
+    r = client.post("/page/ingest", json=page_data)
+    assert r.status_code == 200
+
+    resp = client.post("/command/execute", json={
+        "instruction": "Explain this page in plain English",
+        "page_id": page_id,
+        "intent": "explain_page_content"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is False
+    assert data["page_state"] == "loading"
+    assert data["evidence"] == []
+    assert data["key_points"] == []
+    assert "Page Not Ready" in data["answer"]
+    assert "Reload" in data["answer"]
+
+
+def test_explain_selection_loading_indicator(client):
+    """Verify explain_page_content rejects highlighted loading/error notices."""
+    resp = client.post("/command/execute", json={
+        "instruction": "Explain this",
+        "selection_text": "This is taking longer than usual. Try reloading the page",
+        "intent": "explain_page_content"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is False
+    assert data["page_state"] == "loading"
+    assert data["evidence"] == []
+    assert data["key_points"] == []
+    assert "Selected Content Not Ready" in data["answer"]
+
+
+def test_explain_page_valid_content_no_fake_key_points(client):
+    """Verify explain_page_content on valid content does NOT contain hardcoded placeholder claims."""
+    page_id = "test-valid-article-explain"
+    page_data = {
+        "page_id": page_id,
+        "url": "https://example.com/quantum",
+        "title": "Introduction to Quantum Computing",
+        "content": "Quantum computing is a rapidly-emerging technology that harnesses the laws of quantum mechanics to solve problems too complex for classical computers. Qubits can exist in superposition, allowing simultaneous states.",
+        "headings": ["Introduction", "Quantum Mechanics"],
+        "chunks": [
+            {
+                "id": 1,
+                "heading": "Introduction",
+                "text": "Quantum computing is a rapidly-emerging technology that harnesses the laws of quantum mechanics to solve problems too complex for classical computers."
+            },
+            {
+                "id": 2,
+                "heading": "Superposition",
+                "text": "Unlike classical bits that are strictly 0 or 1, qubits can exist in a state of superposition, enabling multi-dimensional computational spaces."
+            }
+        ],
+        "links": [],
+        "images": []
+    }
+    r = client.post("/page/ingest", json=page_data)
+    assert r.status_code == 200
+
+    resp = client.post("/command/execute", json={
+        "instruction": "Explain this concept simply",
+        "page_id": page_id,
+        "intent": "explain_page_content"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["page_state"] == "ready"
+    assert len(data["answer"].strip()) > 30
+
+    # Ensure fake generic claims are NEVER present
+    for pt in data["key_points"]:
+        assert pt != "Plain-English breakdown generated"
+        assert pt != "Key concepts simplified"
+        assert pt != "Grounded summary generated from page chunks"
+
+    # Evidence items must be valid and non-empty
+    assert len(data["evidence"]) > 0
+    for ev in data["evidence"]:
+        assert len(ev["quote"].strip()) > 15
+
+
+def test_explain_empty_page_chunks_honest_fallback(client):
+    """Verify explain_page_content returns clean abort when page only contains empty chunks."""
+    page_id = "test-empty-chunks-explain"
+    page_data = {
+        "page_id": page_id,
+        "url": "https://example.com/empty",
+        "title": "Blank Page",
+        "content": "",
+        "headings": ["SEARCH", "NAV"],
+        "chunks": [
+            {"id": 1, "heading": "SEARCH", "text": "   "},
+            {"id": 2, "heading": "NAV", "text": ""}
+        ],
+        "links": [],
+        "images": []
+    }
+    client.post("/page/ingest", json=page_data)
+
+    resp = client.post("/command/execute", json={
+        "instruction": "Explain this page",
+        "page_id": page_id,
+        "intent": "explain_page_content"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is False
+    assert data["page_state"] == "empty"
+    assert data["evidence"] == []
+    assert data["key_points"] == []
+    assert "couldn't find readable text" in data["answer"].lower() or "empty" in data["answer"].lower()
+
+
+def test_route_llm_request_empty_response_fallback():
+    """Verify route_llm_request falls back to deterministic function if LLM returns empty."""
+    import asyncio
+    from app.services.hybrid_router import route_llm_request
+    fallback_called = False
+    def mock_fallback():
+        nonlocal fallback_called
+        fallback_called = True
+        return "Deterministic local explanation of concepts."
+
+    async def _run():
+        return await route_llm_request(
+            system_prompt="system",
+            user_prompt="user",
+            privacy_mode="local_only",
+            fallback_local_fn=mock_fallback
+        )
+
+    res, provider = asyncio.run(_run())
+    assert fallback_called is True
+    assert "Deterministic local explanation" in res
+    assert "local (deterministic)" in provider
+
+
+
 
 
 

@@ -214,7 +214,10 @@ async def call_groq_api(
         raise RuntimeError("Groq returned empty choices.")
 
     content = choices[0].get("message", {}).get("content", "")
-    return content.strip()
+    content = content.strip() if content else ""
+    if not content:
+        raise RuntimeError("Groq returned an empty response.")
+    return content
 
 
 async def call_local_llm_api(
@@ -345,7 +348,9 @@ async def route_llm_request(
             temperature=temperature,
             max_tokens=max_tokens
         )
-        return ans, f"cloud (groq: {GROQ_MODEL})"
+        if not ans or not ans.strip():
+            raise RuntimeError("Cloud model returned an empty response.")
+        return ans.strip(), f"cloud (groq: {GROQ_MODEL})"
 
     # ----------------------------------------------------
     # HYBRID MODE: Balanced Intelligent Execution
@@ -361,7 +366,9 @@ async def route_llm_request(
                 temperature=temperature,
                 max_tokens=max_tokens
             )
-            return ans, f"cloud (groq: {GROQ_MODEL})"
+            if ans and ans.strip():
+                return ans.strip(), f"cloud (groq: {GROQ_MODEL})"
+            print("Groq returned empty response in hybrid mode, falling back to local.")
         except Exception as groq_err:
             print("Groq cloud call failed in hybrid mode, falling back to local:", repr(groq_err))
 
@@ -378,16 +385,18 @@ async def route_llm_request(
                 temperature=temperature,
                 max_tokens=max_tokens
             )
-            if ans:
-                return ans, f"local (ollama: {target_model})"
+            if ans and ans.strip():
+                return ans.strip(), f"local (ollama: {target_model})"
         except Exception as local_err:
             print("Local LLM failed in hybrid mode, using deterministic engine:", repr(local_err))
 
     # Ultimate fallback: local deterministic engine
     if fallback_local_fn:
-        return fallback_local_fn(), "local (deterministic)"
+        res = fallback_local_fn()
+        if res and res.strip():
+            return res.strip(), "local (deterministic)"
 
     return (
-        "Grounded extraction complete. All model providers currently unavailable; deterministic local output provided.",
-        "local (deterministic)"
+        "An explanation could not be generated from the available content. Please verify that the webpage has finished loading or try selecting a specific paragraph.",
+        "fallback (no_model_output)"
     )
