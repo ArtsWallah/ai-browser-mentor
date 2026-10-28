@@ -659,6 +659,16 @@ async def ingest_page(
     if not page_id:
         page_id = str(uuid.uuid4())
 
+    from app.services.page_intelligence import filter_and_deduplicate_chunks, detect_page_state
+
+    clean_chunks = filter_and_deduplicate_chunks(request.chunks)
+    state_info = detect_page_state({
+        "title": request.title,
+        "url": request.url,
+        "content": request.content,
+        "chunks": request.chunks
+    })
+
     page_store[page_id] = {
         "page_id": page_id,
         "title": request.title,
@@ -667,12 +677,16 @@ async def ingest_page(
         "description": request.description,
         "headings": request.headings,
         "paragraphs": request.paragraphs,
-        "chunks": request.chunks,
+        "chunks": clean_chunks if clean_chunks else request.chunks,
+        "raw_chunks": request.chunks,
         "links": request.links,
         "images": request.images,
         "interactiveElements": request.interactiveElements,
         "content": request.content,
-        "wordCount": request.wordCount
+        "wordCount": request.wordCount,
+        "page_state": state_info["page_state"],
+        "is_loading_or_error": state_info["is_loading_or_error"],
+        "state_reason": state_info["reason"]
     }
         # ========================================================
     # RAG: CREATE VECTOR INDEX
@@ -681,8 +695,9 @@ async def ingest_page(
     try:
 
         chunk_texts = []
+        chunks_to_index = clean_chunks if clean_chunks else request.chunks
 
-        for chunk in request.chunks:
+        for chunk in chunks_to_index:
 
             if isinstance(chunk, dict):
 
@@ -705,7 +720,7 @@ async def ingest_page(
             create_index(
                 page_id,
                 embeddings,
-                request.chunks
+                chunks_to_index
             )
 
             print(
@@ -742,6 +757,9 @@ async def ingest_page(
         "success": True,
         "message": "Page indexed successfully.",
         "page_id": page_id,
+        "page_state": state_info["page_state"],
+        "is_loading_or_error": state_info["is_loading_or_error"],
+        "state_reason": state_info["reason"],
         "title": request.title,
         "chunkCount": len(request.chunks),
         "linkCount": len(request.links),

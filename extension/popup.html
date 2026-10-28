@@ -855,11 +855,38 @@
             line-height: 1;
         }
 
+        .page-state-banner {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: var(--radius-md);
+            font-size: 11px;
+            line-height: 1.4;
+            margin-top: 6px;
+            margin-bottom: 6px;
+        }
+
+        .page-state-banner.loading {
+            background: rgba(69, 137, 255, 0.12);
+            border: 1px solid rgba(69, 137, 255, 0.35);
+            color: #8ab4f8;
+        }
+
+        .page-state-banner.offline_error {
+            background: rgba(255, 200, 107, 0.12);
+            border: 1px solid rgba(255, 200, 107, 0.35);
+            color: var(--warning);
+        }
+
         .evidence-cards {
             display: flex;
             flex-direction: column;
             gap: 6px;
             margin-top: 4px;
+            max-height: 180px;
+            overflow-y: auto;
+            padding-right: 2px;
         }
 
         .evidence-card {
@@ -1620,6 +1647,9 @@
                         </div>
 
                         <div class="result-action-summary" id="resultActionSummary"></div>
+
+                        <!-- Page State Notice Banner -->
+                        <div class="page-state-banner" id="resultPageStateBanner" style="display: none;"></div>
 
                         <!-- Optional Risk Banner -->
                         <div class="verdict-banner low" id="resultRiskBanner" style="display: none; padding: 8px 10px;">
