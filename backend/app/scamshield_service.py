@@ -48,6 +48,9 @@ def load_model() -> dict[str, Any]:
     if not path.is_file():
         raise RuntimeError(f"ScamShield model file was not found at {model_path}.")
 
+    from app.services.model_integrity import verify_model_artifact
+    verify_model_artifact(path)
+
     model = joblib.load(path)
 
     if not isinstance(model, dict):
