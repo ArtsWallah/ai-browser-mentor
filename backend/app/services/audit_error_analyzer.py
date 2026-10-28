@@ -101,8 +101,11 @@ def run_error_analysis(
     """
     Executes leak-free partitioned evaluation and produces a comprehensive error taxonomy.
     """
-    dataset_path = Path(dataset_path)
-    training_data_path = Path(training_data_path)
+    dataset_path = Path(dataset_path).expanduser()
+    training_data_path = Path(training_data_path).expanduser()
+
+    if not dataset_path.is_file():
+        raise FileNotFoundError(f"Dataset file not found at: {dataset_path}")
 
     # 1. Load data
     with open(dataset_path, encoding="utf-8", errors="replace") as fh:
@@ -258,10 +261,27 @@ def run_error_analysis(
 
 
 if __name__ == "__main__":
-    _UCI = r"C:\Users\DELL\Desktop\ScamShield-AI\data\processed\uci_sms_clean.csv"
-    _TRN = r"C:\Users\DELL\Desktop\ScamShield-AI\data\processed\final_training_data.csv"
-    _OUT = Path(__file__).resolve().parents[2] / "data" / "phase7_error_analysis.json"
-    res = run_error_analysis(_UCI, _TRN, _OUT)
-    print("Error analysis complete. Saved to:", _OUT)
-    print("Metrics:", res["performance_metrics"])
-    print("Error taxonomy:", res["error_taxonomy"])
+    _BACKEND_DIR = Path(__file__).resolve().parents[2]
+    _DEFAULT_DATA_DIR = _BACKEND_DIR / "data" / "scamshield"
+    _RAW_DATA_DIR = os.getenv("SCAMSHIELD_DATA_DIR")
+    if _RAW_DATA_DIR:
+        _DATA_DIR = Path(_RAW_DATA_DIR).expanduser()
+        if not _DATA_DIR.is_absolute():
+            _cand = (_BACKEND_DIR / _DATA_DIR).resolve()
+            if _cand.is_dir():
+                _DATA_DIR = _cand
+    else:
+        _DATA_DIR = _DEFAULT_DATA_DIR
+
+    _UCI = _DATA_DIR / "processed" / "uci_sms_clean.csv"
+    _TRN = _DATA_DIR / "processed" / "final_training_data.csv"
+    _OUT = _BACKEND_DIR / "data" / "phase7_error_analysis.json"
+
+    if not _UCI.is_file():
+        print(f"Error: UCI dataset not found at {_UCI}.")
+        print("Set SCAMSHIELD_DATA_DIR environment variable to point to the data directory.")
+    else:
+        res = run_error_analysis(_UCI, _TRN, _OUT)
+        print("Error analysis complete. Saved to:", _OUT)
+        print("Metrics:", res["performance_metrics"])
+        print("Error taxonomy:", res["error_taxonomy"])

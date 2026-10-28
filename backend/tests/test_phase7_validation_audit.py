@@ -9,11 +9,14 @@ Unit and regression tests for Phase 7:
   - External data separation guarantees (no leakage into training sets)
 """
 
-from __future__ import annotations
-
+import sys
 import tempfile
 from pathlib import Path
 import pytest
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 from app.scamshield_service import analyze_message, explain_tactic_prediction
 from app.services.audit_error_analyzer import categorize_error, run_error_analysis
@@ -104,13 +107,48 @@ class TestErrorTaxonomy:
 class TestExternalDataSeparation:
     def test_clean_split_execution_and_schema(self):
         """Verify that run_error_analysis executes cleanly and produces structured artifacts."""
-        _UCI = r"C:\Users\DELL\Desktop\ScamShield-AI\data\processed\uci_sms_clean.csv"
-        _TRN = r"C:\Users\DELL\Desktop\ScamShield-AI\data\processed\final_training_data.csv"
-        
+        import csv
+        import os
+
+        backend_dir = Path(__file__).resolve().parents[1]
+        raw_data_dir = os.getenv("SCAMSHIELD_DATA_DIR")
+
+        uci_path = None
+        trn_path = None
+        if raw_data_dir:
+            cand_uci = Path(raw_data_dir).expanduser() / "processed" / "uci_sms_clean.csv"
+            cand_trn = Path(raw_data_dir).expanduser() / "processed" / "final_training_data.csv"
+            if cand_uci.is_file():
+                uci_path = cand_uci
+                trn_path = cand_trn
+
+        if uci_path is None:
+            cand_uci = backend_dir / "data" / "scamshield" / "processed" / "uci_sms_clean.csv"
+            cand_trn = backend_dir / "data" / "scamshield" / "processed" / "final_training_data.csv"
+            if cand_uci.is_file():
+                uci_path = cand_uci
+                trn_path = cand_trn
+
         with tempfile.TemporaryDirectory() as tmpdir:
             out_json = Path(tmpdir) / "error_audit.json"
-            res = run_error_analysis(_UCI, _TRN, output_path=out_json, test_ratio=0.20, random_seed=42)
-            
+
+            if uci_path is None or not uci_path.is_file():
+                uci_path = Path(tmpdir) / "uci_sample.csv"
+                trn_path = Path(tmpdir) / "trn_sample.csv"
+                with open(uci_path, "w", encoding="utf-8", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["id", "label", "message", "source"])
+                    for idx in range(30):
+                        writer.writerow([f"h_{idx}", "0", f"Hey friend how are you doing today sample message {idx}", "UCI_SMS"])
+                    for idx in range(15):
+                        writer.writerow([f"s_{idx}", "1", f"URGENT: Win £1000 cash prize claim now free entry {idx} call immediately", "UCI_SMS"])
+                with open(trn_path, "w", encoding="utf-8", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["id", "message"])
+                    writer.writerow(["t_0", "Hey friend how are you doing today sample message 0"])
+
+            res = run_error_analysis(uci_path, trn_path, output_path=out_json, test_ratio=0.20, random_seed=42)
+
             assert out_json.is_file()
             assert "performance_metrics" in res
             assert "error_taxonomy" in res

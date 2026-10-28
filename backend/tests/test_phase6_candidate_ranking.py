@@ -13,10 +13,15 @@ Unit and regression tests for Phase 6:
 
 from __future__ import annotations
 
+import sys
 import tempfile
 from pathlib import Path
 import numpy as np
 import pytest
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 from app.services.pattern_discovery import (
     TextExample,

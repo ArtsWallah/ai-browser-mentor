@@ -77,10 +77,31 @@ from app.services.candidate_ranker import MultiSignalCandidateRanker, evaluate_r
 # CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SCAMSHIELD_DATA_DIR = os.getenv(
-    "SCAMSHIELD_DATA_DIR",
-    r"C:\Users\DELL\Desktop\ScamShield-AI\data",
-)
+def _resolve_scamshield_data_dir() -> Path:
+    """Resolve ScamShield data directory portably from env, backend directory, or current working directory."""
+    raw = os.getenv("SCAMSHIELD_DATA_DIR")
+    if raw:
+        candidate = Path(raw).expanduser()
+        if candidate.is_dir():
+            return candidate
+        cand_backend = (_BACKEND / candidate).resolve()
+        if cand_backend.is_dir():
+            return cand_backend
+        cand_cwd = (Path.cwd() / candidate).resolve()
+        if cand_cwd.is_dir():
+            return cand_cwd
+        return candidate
+
+    default_backend = (_BACKEND / "data" / "scamshield").resolve()
+    if default_backend.is_dir():
+        return default_backend
+    default_data = (_BACKEND / "data").resolve()
+    if (default_data / "processed").is_dir():
+        return default_data
+    return default_backend
+
+
+_SCAMSHIELD_DATA_DIR = _resolve_scamshield_data_dir()
 
 _OUTPUT_PATH = Path(os.getenv(
     "DISCOVERY_OUTPUT",

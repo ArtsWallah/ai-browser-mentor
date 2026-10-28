@@ -31,9 +31,14 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import sys
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 from app.main import app
 from app.services.pattern_discovery import (

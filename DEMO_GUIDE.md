@@ -11,7 +11,7 @@
 ### Step 1: Start the FastAPI Backend
 Open PowerShell and navigate to the project backend directory:
 ```powershell
-cd c:\Users\DELL\Desktop\ai-browser-mentor\backend
+cd backend
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 > **Verification**: Open [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health) in your browser.  
@@ -20,7 +20,7 @@ cd c:\Users\DELL\Desktop\ai-browser-mentor\backend
 ### Step 2: Load / Reload the Chrome Extension
 1. Open Google Chrome and go to `chrome://extensions/`.
 2. Ensure **Developer mode** toggle (top right) is **ON**.
-3. If not loaded: Click **Load unpacked** and select `c:\Users\DELL\Desktop\ai-browser-mentor\extension`.
+3. If not loaded: Click **Load unpacked** and select the `extension/` folder in the project directory.
 4. If already loaded: Click the **reload (circular arrow)** button on the *AI Browser Mentor* card.
 5. Pin the extension to your Chrome toolbar.
 6. Open the extension popup: verify that the status indicator displays **Connected** (green pill).
@@ -118,7 +118,7 @@ Keep metrics rigorously separated during your presentation:
 | **Backend connection refused (red pill)** | Uvicorn server is not running | Run `.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000` |
 | **Extension popup blank or unresponsive** | Chrome background worker asleep | Go to `chrome://extensions/`, click circular **Reload** icon on ScamShield card |
 | **Port 8000 already in use** | A dangling Python process holds port 8000 | In PowerShell: `Get-Process python \| Stop-Process -Force` then restart uvicorn |
-| **`scamshield_configured: false` on `/health`** | Model path missing in `.env` | Ensure `backend/.env` has `SCAMSHIELD_MODEL_PATH=C:/Users/DELL/Desktop/ScamShield-AI/models/tfidf_multilabel_baseline.joblib` |
+| **`scamshield_configured: false` on `/health`** | Model path missing in `.env` | Ensure `backend/.env` has `SCAMSHIELD_MODEL_PATH=./data/models/tfidf_multilabel_baseline.joblib` |
 | **Content script cannot extract webpage text** | Restricted chrome page (e.g. `chrome://`) | Navigate to any standard HTTP/HTTPS page or use the Extension's direct text input |
 
 ---
@@ -133,7 +133,7 @@ If the presentation venue lacks internet access or live execution is constrained
    - Highlights 16 False Positives and 11 False Negatives with detailed root-cause taxonomy (e.g., informal abbreviations, boundary ambiguity).
 3. **Execute the Full Automated Test Suite**:
    ```powershell
-   cd c:\Users\DELL\Desktop\ai-browser-mentor\backend
+   cd backend
    .\.venv\Scripts\python.exe -m pytest tests/test_backend.py tests/test_pattern_discovery.py tests/test_phase6_candidate_ranking.py tests/test_phase7_validation_audit.py -q
    ```
    **Output**: `146 passed` in under 15 seconds. This provides definitive, live proof of system stability and validity.
