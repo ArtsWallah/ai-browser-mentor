@@ -21,6 +21,13 @@ backend/data/vector_store/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+*.ico
+
+# Backups
+*.bak
+*.backup*
+*.before-*
 
 # Logs
 *.log

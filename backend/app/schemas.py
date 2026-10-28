@@ -225,3 +225,87 @@ class ScamShieldAnalysisResponse(BaseModel):
     explanation_limitations: str = ""
     calibrated_probability_note: str = ""
     disclaimer: str = ""
+
+
+# ============================================================
+# PHASE 5: EMERGING PATTERN DISCOVERY SCHEMAS
+# ============================================================
+
+class DiscoveryRunRequest(BaseModel):
+    """
+    Request to run the emerging-pattern discovery pipeline on provided text examples.
+    For batch research use only — not called on every browser request.
+    """
+    examples: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="List of {id, message, source, external_label} dicts. "
+                    "At minimum each must have a 'message' key.",
+    )
+    novelty_threshold: float = Field(
+        default=0.65,
+        ge=0.0,
+        le=1.0,
+        description="Cosine-distance threshold above which a point is flagged as "
+                    "semantically distant from all known tactic prototypes.",
+    )
+    min_cluster_size: int = Field(
+        default=3, ge=2, le=50
+    )
+    max_rows: int | None = Field(
+        default=None,
+        description="Optional row limit (for testing / sampling).",
+    )
+
+
+class PatternEntry(BaseModel):
+    cluster_id: str
+    n_examples: int
+    novelty_score: float
+    associated_tactics: list[str] = Field(default_factory=list)
+    tactic_confidence: str = ""
+    review_status: str = "pending"
+    medoid_message: str = ""
+    medoid_source: str = ""
+    shared_ngrams: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    import_timestamp: str = ""
+    source_provenance: list[str] = Field(default_factory=list)
+
+
+class DiscoveryRunResponse(BaseModel):
+    success: bool = True
+    n_ingested: int = 0
+    n_deduplicated: int = 0
+    n_clusters: int = 0
+    n_noise_points: int = 0
+    n_high_novelty_candidates: int = 0
+    embedding_model: str = ""
+    embedding_available: bool = False
+    algorithm_primary: str = ""
+    silhouette_primary: float | None = None
+    silhouette_baseline: float | None = None
+    n_imported_to_registry: int = 0
+    registry_total: int = 0
+    limitations: list[str] = Field(default_factory=list)
+    disclaimer: str = (
+        "All discovered patterns are candidates for human review only. "
+        "No pattern has been confirmed as a new scam type. "
+        "Temporal emergence cannot be established without timestamps."
+    )
+    error: str | None = None
+
+
+class PatternListResponse(BaseModel):
+    success: bool = True
+    total: int = 0
+    status_filter: str | None = None
+    patterns: list[PatternEntry] = Field(default_factory=list)
+
+
+class PatternReviewRequest(BaseModel):
+    pattern_id: str
+    status: str = Field(
+        description="One of: pending | known | potentially_novel | benign | inconclusive"
+    )
+    reviewer: str = Field(default="anonymous", max_length=128)
+    rationale: str = Field(default="", max_length=2000)
