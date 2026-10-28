@@ -1,0 +1,20 @@
+{
+  "$schema": "scamshield_model_integrity_v1",
+  "description": "Committed SHA-256 integrity manifest for ScamShield model artifacts. Do not modify manually unless models are intentionally retrained.",
+  "generated_at": "2026-10-28T21:43:00Z",
+  "hash_algorithm": "sha256",
+  "models": {
+    "baseline_tfidf_logistic.pkl": {
+      "sha256": "18adc582a920ea805c88f6c40524425e32762166ecc78c1fb748487461a9849c",
+      "size_bytes": 458468,
+      "format": "joblib/pickle",
+      "model_type": "binary_logistic_regression"
+    },
+    "tfidf_multilabel_baseline.joblib": {
+      "sha256": "9fbfc929c5f446b3c660c0f95474085d40fa3a3ed4082f7b8201540e45b8b035",
+      "size_bytes": 253475,
+      "format": "joblib",
+      "model_type": "per_tactic_binary_v1"
+    }
+  }
+}

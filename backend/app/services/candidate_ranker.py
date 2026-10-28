@@ -221,6 +221,8 @@ class MultiSignalCandidateRanker:
         )
         if resolved_spam:
             try:
+                from app.services.model_integrity import verify_model_artifact
+                verify_model_artifact(resolved_spam)
                 import joblib
                 self.spam_model = joblib.load(resolved_spam)
             except Exception:
@@ -237,6 +239,8 @@ class MultiSignalCandidateRanker:
         )
         if resolved_tactic:
             try:
+                from app.services.model_integrity import verify_model_artifact
+                verify_model_artifact(resolved_tactic)
                 import joblib
                 self.tactic_model = joblib.load(resolved_tactic)
             except Exception:

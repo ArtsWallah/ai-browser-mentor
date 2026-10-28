@@ -115,8 +115,9 @@ Evaluated using a 70/30 group-partitioned split (seed 42, 5,157 unique texts, 0 
 
 ## 🔬 6. Dataset Provenance, Error Analysis & Limitations
 
-### Dataset Provenance
-- Evaluated on the curated **UCI SMS Spam Collection** (5,157 deduplicated, normalized records: 4,600 benign, 557 malicious).
+### Dataset Provenance & Attribution
+- Evaluated on the curated **UCI SMS Spam Collection** (5,157 deduplicated, normalized records: 4,600 benign, 557 malicious), created by **Tiago A. Almeida** and **José María Gómez Hidalgo** under the [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/) license.
+- Full academic citations, license terms, and derivative artifact boundary distinctions are detailed in [ATTRIBUTION.md](file:///c:/Users/DELL/Desktop/ai-browser-mentor/backend/data/scamshield/processed/ATTRIBUTION.md).
 - Multi-label tactic annotations derived via dictionary-grounded heuristic bootstrap combined with human review.
 
 ### Audited Error Taxonomy
