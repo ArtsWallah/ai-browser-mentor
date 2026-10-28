@@ -461,3 +461,31 @@ def build_safe_context(chunks: list[dict[str, Any]], max_chars: int = 6000) -> s
 
     joined = "\n".join(context_lines)
     return f"<untrusted_webpage_content>\n{joined}\n</untrusted_webpage_content>"
+
+
+def extract_key_points_from_text(text: str, max_points: int = 5) -> list[str]:
+    """
+    Extracts actual key bullet points from model generated or structured text.
+    Never returns generic placeholder strings.
+    """
+    if not text:
+        return []
+    points = []
+    lines = text.split("\n")
+    for line in lines:
+        cleaned = line.strip()
+        # Look for bullet points: -, *, •
+        m = re.match(r"^[-*•]\s+(.+)$", cleaned)
+        if m:
+            point = m.group(1).strip()
+            # Avoid headings or very short labels
+            if len(point) >= 8 and not point.endswith(":"):
+                points.append(point)
+        elif re.match(r"^\d+\.\s+(.+)$", cleaned):
+            point = re.match(r"^\d+\.\s+(.+)$", cleaned).group(1).strip()
+            if len(point) >= 8 and not point.endswith(":"):
+                points.append(point)
+        if len(points) >= max_points:
+            break
+    return points
+

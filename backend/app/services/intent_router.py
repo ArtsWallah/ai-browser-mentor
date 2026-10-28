@@ -14,7 +14,8 @@ from app.services.page_intelligence import (
     build_safe_context,
     detect_page_state,
     filter_and_deduplicate_chunks,
-    extract_grounded_evidence
+    extract_grounded_evidence,
+    extract_key_points_from_text
 )
 from app.services.embedding_service import embed_text
 from app.services.vector_store import search
@@ -536,12 +537,107 @@ async def execute_command(
 
     # 6. TOOL: explain_page_content
     if intent == "explain_page_content":
+        # 6a. Check for loading/offline/error states
+        if clean_selection:
+            sel_state = detect_page_state({"content": clean_selection})
+            if sel_state["is_loading_or_error"]:
+                detected_notice = f" (detected: {', '.join(sel_state['detected_phrases'][:2])})" if sel_state["detected_phrases"] else ""
+                return CommandExecutionResponse(
+                    success=False,
+                    intent=intent,
+                    tool_name=tool_name,
+                    action_summary=f"Selected text is a {sel_state['page_state']} message.",
+                    answer=(
+                        f"### Selected Content Not Ready\n\n"
+                        f"The highlighted text appears to be a loading indicator or connection error message{detected_notice}. "
+                        f"No substantive page content was selected to explain.\n\n"
+                        f"**Suggestions:**\n"
+                        f"- Refresh the tab (F5) and wait for the page to finish rendering.\n"
+                        f"- Highlight an article paragraph, email message, or concept once visible."
+                    ),
+                    key_points=[],
+                    evidence=[],
+                    risk_assessment=None,
+                    limitations="Highlighted text contains only loading or connection error notices.",
+                    provider="page_state_detector",
+                    privacy_mode_applied=pm,
+                    page_state=sel_state["page_state"],
+                    error="Selection contains loading or error messages"
+                )
+        elif page:
+            page_state_res = detect_page_state(page)
+            if page_state_res["is_loading_or_error"]:
+                detected_notice = f" (detected: {', '.join(page_state_res['detected_phrases'][:2])})" if page_state_res["detected_phrases"] else ""
+                suggestion = page_state_res.get("suggestion", "Please reload the page (F5) and wait for content to finish rendering, then retry.")
+                return CommandExecutionResponse(
+                    success=False,
+                    intent=intent,
+                    tool_name=tool_name,
+                    action_summary=f"Page has not finished loading ({page_state_res['page_state']}).",
+                    answer=(
+                        f"### Page Not Ready for Explanation\n\n"
+                        f"The page appears to still be loading or is currently offline{detected_notice}. "
+                        f"The actual content has not loaded enough to generate a meaningful explanation.\n\n"
+                        f"**Suggestions:**\n"
+                        f"- **Reload**: Refresh the tab (press F5 or Ctrl+R) and wait for the page to finish rendering.\n"
+                        f"- **Retry**: Once your content is visible on screen, click **Read Page** or select text to explain."
+                    ),
+                    key_points=[],
+                    evidence=[],
+                    risk_assessment=None,
+                    limitations="Explanation paused: detected loading or offline error screen.",
+                    provider="page_state_detector",
+                    privacy_mode_applied=pm,
+                    page_state=page_state_res["page_state"],
+                    error="Page not ready: loading or offline"
+                )
+
+        # 6b. Determine target content and evidence
         target_content = clean_selection
-        if not target_content and page and page.get("chunks"):
-            # Use lead chunks from page
-            target_content = "\n\n".join(c.get("text", "") for c in page.get("chunks", [])[:4])
+        evidence_items = []
+        if target_content:
+            evidence_items = [
+                EvidenceItem(heading="Selected Passage", quote=target_content[:300], relevance_score=1.0)
+            ]
+        elif page and page.get("chunks"):
+            clean_chunks = filter_and_deduplicate_chunks(page.get("chunks", []))
+            if not clean_chunks:
+                return CommandExecutionResponse(
+                    success=False,
+                    intent=intent,
+                    tool_name=tool_name,
+                    action_summary="Explanation aborted: no readable page content.",
+                    answer="I couldn't find readable text on this page to explain. The page sections appear empty or interface-only. Please navigate to a page with article or email body content.",
+                    key_points=[],
+                    evidence=[],
+                    risk_assessment=None,
+                    limitations="All extracted sections were empty or interface-only.",
+                    provider="deterministic_engine",
+                    privacy_mode_applied=pm,
+                    page_state="empty",
+                    error="Empty content chunks"
+                )
+            target_content = "\n\n".join(c.get("text", "") for c in clean_chunks[:4])
+            evidence_items = extract_grounded_evidence(clean_chunks, max_items=3)
         elif not target_content:
             target_content = clean_instr
+
+        if not target_content or not target_content.strip():
+            return CommandExecutionResponse(
+                success=False,
+                intent=intent,
+                tool_name=tool_name,
+                action_summary="Explanation aborted: no substantive text.",
+                answer="No substantive text was available to explain. Please highlight a paragraph on the page or ensure the page content is loaded.",
+                key_points=[],
+                evidence=[],
+                risk_assessment=None,
+                limitations="Target content is empty.",
+                provider="deterministic_engine",
+                privacy_mode_applied=pm,
+                page_state="empty",
+                error="Empty target content"
+            )
 
         preview = target_content[:400] + ("..." if len(target_content) > 400 else "")
         def explain_fallback():
@@ -570,21 +666,28 @@ Please format clearly:
             fallback_local_fn=explain_fallback,
             temperature=0.2
         )
-        evidence_items = [
-            EvidenceItem(heading="Source Passage", quote=target_content[:300], relevance_score=1.0)
-        ]
+
+        # Honest fallback if LLM response is unexpectedly empty
+        if not answer_text or not answer_text.strip():
+            answer_text = "An explanation could not be generated from the available content. Please verify that the webpage has finished loading or try selecting a specific paragraph."
+            provider_label = "fallback (no_model_output)"
+
+        # Dynamically extract actual bullet points if present; never use generic placeholder strings
+        extracted_pts = extract_key_points_from_text(answer_text, max_points=4)
+
         return CommandExecutionResponse(
             success=True,
             intent=intent,
             tool_name=tool_name,
             action_summary="Explained content in simplified, accessible language.",
             answer=answer_text,
-            key_points=["Plain-English breakdown generated", "Key concepts simplified"],
+            key_points=extracted_pts,
             evidence=evidence_items,
             risk_assessment=None,
             limitations="Based on the provided passage and webpage context.",
             provider=provider_label,
-            privacy_mode_applied=pm
+            privacy_mode_applied=pm,
+            page_state="ready"
         )
 
     # 7. TOOL: summarize_page
@@ -691,7 +794,7 @@ Please format your response clearly:
             tool_name=tool_name,
             action_summary="Summarized webpage into structured takeaways.",
             answer=answer_text,
-            key_points=det["key_points"] if "deterministic" in provider_label else ["Grounded summary generated from page chunks"],
+            key_points=det["key_points"] if "deterministic" in provider_label else extract_key_points_from_text(answer_text, max_points=5),
             evidence=evidence_items,
             risk_assessment=None,
             limitations="Summary grounded strictly on visible page sections.",
@@ -779,7 +882,7 @@ Analyze:
             tool_name=tool_name,
             action_summary="Compared claim against page content.",
             answer=answer_text,
-            key_points=["Verified against top retrieved page sections"],
+            key_points=extract_key_points_from_text(answer_text, max_points=4),
             evidence=evidence_items,
             risk_assessment=None,
             limitations="Fact-checked against visible page context only.",
@@ -881,7 +984,7 @@ If the webpage context does not contain the answer, say:
         tool_name=tool_name,
         action_summary=f"Answered user question grounded in {len(relevant_chunks)} page sections.",
         answer=answer_text,
-        key_points=["Grounded in retrieved page sections"],
+        key_points=extract_key_points_from_text(answer_text, max_points=4),
         evidence=evidence_items,
         risk_assessment=None,
         limitations="Grounded only on the visible sections of the active webpage.",

@@ -754,12 +754,15 @@
         .command-result-card {
             display: flex;
             flex-direction: column;
-            gap: 10px;
-            background: var(--bg);
-            border: 1px solid var(--border);
+            gap: 11px;
+            background: rgba(15, 20, 34, 0.95);
+            border: 1px solid rgba(130, 116, 255, 0.2);
             border-radius: var(--radius-md);
-            padding: 12px;
+            padding: 13px;
             animation: fadeIn 0.2s ease;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            min-width: 0;
+            overflow: hidden;
         }
 
         .result-header {
@@ -767,14 +770,28 @@
             align-items: center;
             justify-content: space-between;
             gap: 8px;
-            padding-bottom: 8px;
+            padding-bottom: 9px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            min-width: 0;
+            width: 100%;
+        }
+
+        .result-header-left {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            flex: 1 1 auto;
+            overflow: hidden;
         }
 
         .result-badges {
             display: flex;
             align-items: center;
             gap: 6px;
+            min-width: 0;
+            flex: 1 1 auto;
+            overflow: hidden;
         }
 
         .badge-tool {
@@ -782,77 +799,162 @@
             align-items: center;
             gap: 4px;
             padding: 3px 8px;
-            background: rgba(130, 116, 255, 0.15);
-            border: 1px solid rgba(130, 116, 255, 0.4);
-            color: #b4aaff;
+            background: rgba(130, 116, 255, 0.16);
+            border: 1px solid rgba(130, 116, 255, 0.38);
+            color: #c4b5fd;
             border-radius: 6px;
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 700;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.2px;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .badge-provider {
-            padding: 3px 6px;
-            background: var(--surface-raised);
-            border: 1px solid var(--border);
+            display: inline-block;
+            padding: 3px 7px;
+            background: rgba(19, 26, 43, 0.85);
+            border: 1px solid rgba(98, 217, 245, 0.25);
             color: var(--cyan);
             border-radius: 6px;
             font-size: 10px;
             font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 135px;
+            flex-shrink: 1;
+        }
+
+        .result-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+
+        .result-action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            height: 26px;
+            padding: 0 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+            line-height: 1;
+        }
+
+        .result-action-btn:hover {
+            background: rgba(130, 116, 255, 0.14);
+            border-color: rgba(130, 116, 255, 0.4);
+            color: #fff;
+        }
+
+        .result-action-btn:active {
+            transform: scale(0.96);
+        }
+
+        .result-action-btn:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 1px;
+        }
+
+        .result-action-btn.icon-only {
+            width: 26px;
+            padding: 0;
         }
 
         .result-action-summary {
             font-size: 11px;
-            font-style: italic;
             color: var(--muted);
             line-height: 1.4;
+            display: none;
         }
 
         .result-answer {
-            font-size: 12px;
-            color: var(--text);
-            line-height: 1.6;
+            font-size: 12.5px;
+            color: #f1f5f9;
+            line-height: 1.62;
             white-space: pre-wrap;
             word-break: break-word;
-            max-height: 240px;
+            max-height: 250px;
             overflow-y: auto;
+            overflow-x: hidden;
             padding-right: 4px;
+        }
+
+        .result-answer::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .result-answer::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 2px;
+        }
+
+        .result-answer::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
         }
 
         .result-answer h3 {
             font-size: 13px;
             font-weight: 700;
             color: var(--cyan);
-            margin-bottom: 6px;
+            margin: 8px 0 4px;
         }
 
         .result-answer strong {
-            color: #fff;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .result-section-title {
+            font-size: 10px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-top: 6px;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
 
         .result-key-points {
             display: flex;
             flex-direction: column;
-            gap: 4px;
-            margin-top: 4px;
+            gap: 5px;
         }
 
         .result-key-point-item {
             display: flex;
             align-items: flex-start;
-            gap: 6px;
+            gap: 7px;
             font-size: 11px;
-            color: var(--text-secondary);
-            background: var(--surface-raised);
-            border: 1px solid rgba(161, 177, 213, 0.1);
+            color: #cbd5e1;
+            background: rgba(19, 26, 43, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.06);
             border-radius: 6px;
-            padding: 6px 8px;
+            padding: 6px 9px;
+            line-height: 1.45;
         }
 
         .result-key-point-bullet {
             color: var(--cyan);
             font-weight: bold;
             line-height: 1;
+            margin-top: 1px;
+            flex-shrink: 0;
         }
 
         .page-state-banner {
@@ -863,8 +965,8 @@
             border-radius: var(--radius-md);
             font-size: 11px;
             line-height: 1.4;
-            margin-top: 6px;
-            margin-bottom: 6px;
+            margin-top: 2px;
+            margin-bottom: 4px;
         }
 
         .page-state-banner.loading {
@@ -883,27 +985,38 @@
             display: flex;
             flex-direction: column;
             gap: 6px;
-            margin-top: 4px;
-            max-height: 180px;
+            max-height: 170px;
             overflow-y: auto;
-            padding-right: 2px;
+            padding-right: 3px;
+        }
+
+        .evidence-cards::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .evidence-cards::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
         }
 
         .evidence-card {
-            padding: 6px 8px;
-            background: var(--surface-raised);
+            padding: 7px 10px;
+            background: rgba(13, 18, 30, 0.75);
+            border: 1px solid rgba(130, 116, 255, 0.12);
             border-left: 3px solid var(--primary);
-            border-radius: 0 6px 6px 0;
+            border-radius: 2px 6px 6px 2px;
             font-size: 11px;
-            color: var(--text-secondary);
+            color: #94a3b8;
+            line-height: 1.45;
+            word-break: break-word;
         }
 
         .evidence-card strong {
-            color: var(--text);
+            color: #e2e8f0;
             display: block;
             font-size: 10px;
             text-transform: uppercase;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.4px;
             margin-bottom: 2px;
         }
 
@@ -911,11 +1024,12 @@
             font-size: 10px;
             color: var(--muted);
             border-top: 1px solid rgba(255, 255, 255, 0.06);
-            padding-top: 6px;
+            padding-top: 7px;
+            margin-top: 2px;
             font-style: italic;
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 5px;
         }
 
         /* SECURITY TAB STYLES */
@@ -1636,13 +1750,22 @@
                     <!-- 4. RESULT CARD STATE -->
                     <div class="command-result-card" id="commandResultCard" style="display: none;">
                         <div class="result-header">
-                            <div class="result-badges">
+                            <div class="result-header-left">
                                 <span class="badge-tool" id="resultToolBadge">&#9889; Tool</span>
-                                <span class="badge-provider" id="resultProviderBadge">Engine</span>
+                                <span class="badge-provider" id="resultProviderBadge" title="Engine & Privacy Mode">Engine</span>
                             </div>
-                            <div style="display: flex; gap: 6px;">
-                                <button class="btn-copy" id="btnCopyCommandResult" type="button" title="Copy response to clipboard">Copy</button>
-                                <button class="btn-copy" id="btnNewTask" type="button" title="Clear and start new task">&#10005; New Task</button>
+                            <div class="result-header-actions">
+                                <button class="result-action-btn" id="btnCopyCommandResult" type="button" title="Copy result to clipboard" aria-label="Copy result">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                    <span>Copy</span>
+                                </button>
+                                <button class="result-action-btn" id="btnNewTask" type="button" title="Start new task" aria-label="New task">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                    <span>New</span>
+                                </button>
+                                <button class="result-action-btn icon-only" id="btnDismissResult" type="button" title="Close result card" aria-label="Close result card">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
                             </div>
                         </div>
 
@@ -1663,15 +1786,21 @@
                         <!-- Direct Answer -->
                         <div class="result-answer" id="resultAnswer"></div>
 
-                        <!-- Key Points -->
+                        <!-- Key Points (only shown if real points exist) -->
                         <div id="resultKeyPointsContainer" style="display: none;">
-                            <div style="font-size: 11px; font-weight: 700; color: var(--text); margin-top: 4px; margin-bottom: 3px;">Key Points:</div>
+                            <div class="result-section-title">
+                                <span>&#9670;</span>
+                                <span>Key Points</span>
+                            </div>
                             <div class="result-key-points" id="resultKeyPointsList"></div>
                         </div>
 
-                        <!-- Grounded Evidence -->
+                        <!-- Grounded Evidence (only shown if real evidence exists) -->
                         <div id="resultEvidenceContainer" style="display: none;">
-                            <div style="font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 6px; margin-bottom: 4px;">Grounded Page Evidence:</div>
+                            <div class="result-section-title">
+                                <span>&#128196;</span>
+                                <span>Grounded Page Evidence</span>
+                            </div>
                             <div class="evidence-cards" id="resultEvidenceCards"></div>
                         </div>
 

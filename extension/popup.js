@@ -51,6 +51,7 @@ const commandBtnText = document.getElementById("commandBtnText");
 const btnClearCommand = document.getElementById("btnClearCommand");
 const btnNewTask = document.getElementById("btnNewTask");
 const btnCopyCommandResult = document.getElementById("btnCopyCommandResult");
+const btnDismissResult = document.getElementById("btnDismissResult");
 
 // Command States & Result Cards
 const commandEmptyState = document.getElementById("commandEmptyState");
@@ -651,11 +652,42 @@ function renderCommandResult(data) {
     hideCommandStates();
     if (commandResultCard) commandResultCard.style.display = "flex";
 
-    // 1. Tool and Provider Badges
-    const toolName = (data.tool_name || data.intent || "assistant").replace(/_/g, " ").toUpperCase();
-    if (resultToolBadge) resultToolBadge.innerHTML = `&#9889; ${escapeHtml(toolName)}`;
+    // 1. Tool Title & Provider Badges
+    const TOOL_TITLES = {
+        "explain_page_content": "Page Explanation",
+        "summarize_page": "Page Summary",
+        "extract_page_information": "Page Outline",
+        "analyze_page_security": "Security Audit",
+        "inspect_links": "Link Audit",
+        "compare_provided_content": "Content Comparison",
+        "answer_page_question": "Grounded Q&A",
+        "analyze_selected_text": "Text Security Audit"
+    };
+    const rawTool = data.tool_name || data.intent || "assistant";
+    const toolTitle = TOOL_TITLES[rawTool] || rawTool.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    if (resultToolBadge) {
+        resultToolBadge.innerHTML = `&#9889; ${escapeHtml(toolTitle)}`;
+    }
+
+    // Provider label formatting
+    const rawProvider = data.provider || "System";
     const appliedMode = data.privacy_mode_applied || currentPrivacyMode;
-    if (resultProviderBadge) resultProviderBadge.textContent = `${data.provider || "System"} • ${appliedMode}`;
+    let providerShort = rawProvider;
+    if (rawProvider.includes("groq")) {
+        providerShort = "Groq Cloud";
+    } else if (rawProvider.includes("ollama")) {
+        providerShort = "Ollama Local";
+    } else if (rawProvider.includes("deterministic") || rawProvider.includes("engine")) {
+        providerShort = "Local NLP";
+    } else if (rawProvider.includes("page_state")) {
+        providerShort = "State Guard";
+    } else if (rawProvider.includes("scamshield")) {
+        providerShort = "ScamShield";
+    }
+    if (resultProviderBadge) {
+        resultProviderBadge.textContent = `${providerShort} • ${appliedMode}`;
+        resultProviderBadge.title = `Engine: ${rawProvider} | Mode: ${appliedMode}`;
+    }
 
     // 2. Action Summary
     if (resultActionSummary) {
@@ -669,20 +701,20 @@ function renderCommandResult(data) {
             resultPageStateBanner.className = "page-state-banner loading";
             resultPageStateBanner.style.display = "flex";
             resultPageStateBanner.innerHTML = `
-                <span style="font-size: 14px;">&#9203;</span>
+                <span style="font-size: 14px; flex-shrink: 0;">&#9203;</span>
                 <div>
                     <strong>Page Incomplete or Still Loading</strong>
-                    <div>The source page appears to still be loading. Try refreshing the tab (F5) and re-extracting once loaded.</div>
+                    <div style="margin-top: 2px;">The source webpage has not finished rendering. Wait for content to appear or reload (F5), then try again.</div>
                 </div>
             `;
         } else if (pageState === "offline_error") {
             resultPageStateBanner.className = "page-state-banner offline_error";
             resultPageStateBanner.style.display = "flex";
             resultPageStateBanner.innerHTML = `
-                <span style="font-size: 14px;">&#9888;</span>
+                <span style="font-size: 14px; flex-shrink: 0;">&#9888;</span>
                 <div>
-                    <strong>Page Offline or Unavailable</strong>
-                    <div>The source page encountered a connection error or is offline. Please check your network and reload the page.</div>
+                    <strong>Page Offline or Connection Error</strong>
+                    <div style="margin-top: 2px;">The source tab encountered a connection error or offline screen. Check your network and reload the page.</div>
                 </div>
             `;
         } else {
@@ -703,18 +735,39 @@ function renderCommandResult(data) {
         resultRiskBanner.style.display = "none";
     }
 
-    // 4. Direct Answer
+    // 4. Direct Answer / Explanation (Robust field mapping & honest fallback)
+    let answerText = (data.answer || data.text_response || "").trim();
+    if (!answerText) {
+        if (data.success === false) {
+            answerText = data.error || data.action_summary || "Could not generate an explanation for this content.";
+        } else {
+            answerText = "An explanation could not be generated from the available content. Please verify that the webpage has finished loading or try highlighting a specific paragraph.";
+        }
+    }
     if (resultAnswer) {
-        resultAnswer.textContent = data.answer || "No output provided.";
+        resultAnswer.textContent = answerText;
     }
 
-    // 5. Key Points
+    // 5. Key Points (Strictly render when actual non-placeholder points exist)
     if (resultKeyPointsContainer && resultKeyPointsList) {
-        const points = data.key_points || [];
-        if (points.length > 0) {
+        const rawPoints = Array.isArray(data.key_points) ? data.key_points : [];
+        const genericPlaceholders = new Set([
+            "plain-english breakdown generated",
+            "key concepts simplified",
+            "grounded summary generated from page chunks",
+            "verified against top retrieved page sections",
+            "grounded in retrieved page sections",
+            "grounded summary generated"
+        ]);
+        const validPoints = rawPoints.filter(p => {
+            const str = (p || "").trim();
+            return str.length > 5 && !genericPlaceholders.has(str.toLowerCase());
+        });
+
+        if (validPoints.length > 0) {
             resultKeyPointsContainer.style.display = "block";
             resultKeyPointsList.innerHTML = "";
-            points.forEach(pt => {
+            validPoints.forEach(pt => {
                 const item = document.createElement("div");
                 item.className = "result-key-point-item";
                 item.innerHTML = `<span class="result-key-point-bullet">&#9670;</span><span>${escapeHtml(pt)}</span>`;
@@ -725,12 +778,25 @@ function renderCommandResult(data) {
         }
     }
 
-    // 6. Grounded Evidence Cards (filter empty cards like SEARCH or LABELS)
+    // 6. Grounded Evidence Cards (Filter empty headings, UI labels, and loading notices)
     if (resultEvidenceContainer && resultEvidenceCards) {
-        const rawEvidence = data.evidence || [];
+        const rawEvidence = Array.isArray(data.evidence) ? data.evidence : [];
+        const UI_DISALLOWED = new Set([
+            "search", "labels", "inbox", "sent", "drafts", "trash", "spam", "all mail",
+            "navigation", "menu", "header", "footer", "sidebar", "banner"
+        ]);
         const validEvidence = rawEvidence.filter(ev => {
             const quote = (ev.quote || "").trim();
-            return quote.length > 0;
+            const heading = (ev.heading || "").trim().toLowerCase();
+            if (quote.length < 15) return false;
+            // Filter out navigation/interface single-word labels with short text
+            if (UI_DISALLOWED.has(heading) && quote.length < 40) return false;
+            // Filter out loading indicators from evidence cards
+            const quoteLower = quote.toLowerCase();
+            if (quoteLower.includes("taking longer than usual") || quoteLower.includes("reloading the page") || quoteLower.includes("gemini is offline")) {
+                return false;
+            }
+            return true;
         });
 
         if (validEvidence.length > 0) {
@@ -739,7 +805,7 @@ function renderCommandResult(data) {
             validEvidence.slice(0, 4).forEach(ev => {
                 const card = document.createElement("div");
                 card.className = "evidence-card";
-                card.innerHTML = `<strong>${escapeHtml(ev.heading || "Page Section")}</strong><span>${escapeHtml(ev.quote)}</span>`;
+                card.innerHTML = `<strong>${escapeHtml(ev.heading || "Source Passage")}</strong><span>${escapeHtml(ev.quote)}</span>`;
                 resultEvidenceCards.appendChild(card);
             });
         } else {
@@ -1181,10 +1247,18 @@ function setupEventListeners() {
         const text = resultAnswer?.textContent;
         if (!text) return;
         navigator.clipboard.writeText(text).then(() => {
-            const orig = btnCopyCommandResult.textContent;
-            btnCopyCommandResult.textContent = "Copied!";
-            setTimeout(() => { btnCopyCommandResult.textContent = orig; }, 1500);
+            const labelSpan = btnCopyCommandResult.querySelector("span");
+            if (labelSpan) {
+                const orig = labelSpan.textContent;
+                labelSpan.textContent = "Copied!";
+                setTimeout(() => { labelSpan.textContent = orig; }, 1500);
+            }
         });
+    });
+
+    // Dismiss / Close command result card
+    btnDismissResult?.addEventListener("click", () => {
+        showCommandEmptyState();
     });
 
     // ==================== WORKSPACE LISTENERS ====================
