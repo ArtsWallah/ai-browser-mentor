@@ -207,3 +207,54 @@ def search(
             })
 
     return results
+
+
+def init_vector_store_dir(base_dir=None) -> str:
+    """Safely initialize vector store directory on startup."""
+    target_dir = str(base_dir) if base_dir is not None else VECTOR_DIR
+    os.makedirs(target_dir, exist_ok=True)
+    return target_dir
+
+
+def cleanup_temporary_vector_store(max_age_hours: int = 24, base_dir=None) -> int:
+    """
+    Safely purges stale temporary vector-store index files (.index, .npy, .json)
+    older than max_age_hours to prevent unbounded disk growth.
+
+    SAFETY GUARANTEES:
+    - Only operates strictly inside the isolated target directory.
+    - NEVER touches dataset, model, or registry files in parent directories.
+    - Gracefully handles locked files.
+
+    Returns:
+        Number of removed temporary files.
+    """
+    import time
+    target_dir = str(base_dir) if base_dir is not None else VECTOR_DIR
+    if not os.path.isdir(target_dir):
+        return 0
+
+    now = time.time()
+    cutoff = now - (max_age_hours * 3600)
+    removed_count = 0
+
+    try:
+        entries = os.listdir(target_dir)
+    except OSError:
+        return 0
+
+    for fname in entries:
+        # Strictly target temporary vector store extensions only
+        if not (fname.endswith(".index") or fname.endswith(".npy") or fname.endswith(".json") or fname.endswith(".faiss")):
+            continue
+        fpath = os.path.join(target_dir, fname)
+        try:
+            if os.path.isfile(fpath):
+                mtime = os.path.getmtime(fpath)
+                if mtime < cutoff:
+                    os.remove(fpath)
+                    removed_count += 1
+        except OSError:
+            pass
+
+    return removed_count
