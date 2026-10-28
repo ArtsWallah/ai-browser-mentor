@@ -68,10 +68,11 @@ In a PowerShell terminal inside `backend/`:
    - `total_registered`: 430 patterns catalogued.
    - `pending_review`: Patterns flagged by multi-signal ranking requiring analyst sign-off.
    - `categories`: Breakdown by tactic combination (`urgency + reward_lure`, `impersonation`, etc.).
-3. Showcase Analyst Review Action via PowerShell:
+3. Showcase Analyst Review Action via PowerShell (requires configured DISCOVERY_ACCESS_TOKEN):
    ```powershell
    curl.exe -X POST "http://127.0.0.1:8000/scamshield/discovery/review" `
      -H "Content-Type: application/json" `
+     -H "X-Discovery-Token: your_secure_discovery_token_here" `
      -d '{"pattern_id": "PATTERN-2026-0001", "action": "accept", "reviewed_by": "evaluator", "assigned_tactics": ["urgency", "reward_lure"], "notes": "Verified emerging smishing template."}'
    ```
    Returns updated status: `"accepted"`.
