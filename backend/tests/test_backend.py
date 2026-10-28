@@ -928,6 +928,217 @@ def test_scamshield_uncalibrated_score_documentation(client):
             assert "missing" in item["uncertainty_note"].lower() or "unconfigured" in item["uncertainty_note"].lower()
 
 
+# ============================================================
+# WEBPAGE SUMMARIZATION & PAGE STATE REGRESSION TESTS
+# ============================================================
+
+def test_summarize_normal_article(client):
+    """Normal article summarization succeeds with structured key points and non-empty grounded evidence."""
+    page_id = "test-normal-article-1"
+    page_data = {
+        "page_id": page_id,
+        "title": "Advances in Renewable Energy Systems",
+        "url": "https://science.example.org/renewable-energy",
+        "wordCount": 650,
+        "content": (
+            "Solar and wind power have seen substantial efficiency gains over the past decade. "
+            "Grid-scale battery storage has dropped in cost, enabling intermittent power sources "
+            "to reliably supply base-load electrical demand."
+        ),
+        "chunks": [
+            {
+                "id": 1,
+                "heading": "Efficiency Gains",
+                "text": "Solar and wind energy installations achieved record energy conversion efficiency this year."
+            },
+            {
+                "id": 2,
+                "heading": "Battery Storage",
+                "text": "Lithium iron phosphate and sodium-ion batteries have reduced storage costs by 40%."
+            },
+            {
+                "id": 3,
+                "heading": "Grid Modernization",
+                "text": "Smart inverters dynamically stabilize voltage frequencies across regional power grids."
+            }
+        ],
+        "links": [{"url": "https://science.example.org/data", "text": "Dataset"}],
+        "images": []
+    }
+    r = client.post("/page/ingest", json=page_data)
+    assert r.status_code == 200
+    assert r.json()["page_state"] == "ready"
+
+    resp = client.post("/command/execute", json={
+        "instruction": "Summarize this page with core takeaways",
+        "page_id": page_id,
+        "intent": "summarize_page"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["intent"] == "summarize_page"
+    assert data["page_state"] == "ready"
+    assert len(data["key_points"]) > 0
+    assert len(data["evidence"]) > 0
+
+    # Ensure all evidence cards have non-empty quotes and headings
+    for ev in data["evidence"]:
+        assert ev["heading"].strip() != ""
+        assert ev["quote"].strip() != ""
+
+
+def test_summarize_loading_gmail_page(client):
+    """When Gmail is stuck loading, summarization detects the state and provides retry instructions without hallucinating email content."""
+    page_id = "test-gmail-loading-stuck"
+    page_data = {
+        "page_id": page_id,
+        "title": "Gmail",
+        "url": "https://mail.google.com/mail/u/0/#inbox",
+        "wordCount": 45,
+        "content": "This is taking longer than usual. Try reloading the page. Gemini is offline. Still loading...",
+        "chunks": [
+            {"id": 1, "heading": "SEARCH", "text": ""},
+            {"id": 2, "heading": "LABELS", "text": ""},
+            {"id": 3, "heading": "Gmail Notice", "text": "This is taking longer than usual. Try reloading the page"},
+            {"id": 4, "heading": "Status", "text": "Gemini is offline"}
+        ],
+        "links": [],
+        "images": []
+    }
+    r = client.post("/page/ingest", json=page_data)
+    assert r.status_code == 200
+    assert r.json()["page_state"] == "loading"
+    assert r.json()["is_loading_or_error"] is True
+
+    resp = client.post("/command/execute", json={
+        "instruction": "Summarize this page",
+        "page_id": page_id,
+        "intent": "summarize_page"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    # Must report that page is not ready
+    assert data["success"] is False
+    assert data["page_state"] == "loading"
+    assert "not finished loading" in data["action_summary"].lower() or "loading" in data["action_summary"].lower()
+
+    # Must provide clear explanation and reload/retry guidance
+    answer_lower = data["answer"].lower()
+    assert "not ready" in answer_lower or "loading" in answer_lower
+    assert "reload" in answer_lower or "retry" in answer_lower
+
+    # Must NOT invent email content or return empty evidence cards
+    assert len(data["evidence"]) == 0
+
+
+def test_summarize_offline_error_page(client):
+    """When a page displays connection errors or offline notices, summarization reports offline state with network suggestions."""
+    page_id = "test-offline-error-page"
+    page_data = {
+        "page_id": page_id,
+        "title": "You're offline",
+        "url": "https://app.example.com/dashboard",
+        "wordCount": 25,
+        "content": "You are offline. Please check your network connection and try again. ERR_INTERNET_DISCONNECTED",
+        "chunks": [
+            {
+                "id": 1,
+                "heading": "Network Error",
+                "text": "You are offline. Please check your network connection and try again."
+            }
+        ],
+        "links": [],
+        "images": []
+    }
+    r = client.post("/page/ingest", json=page_data)
+    assert r.status_code == 200
+    assert r.json()["page_state"] == "offline_error"
+    assert r.json()["is_loading_or_error"] is True
+
+    resp = client.post("/command/execute", json={
+        "instruction": "Summarize this page",
+        "page_id": page_id,
+        "intent": "summarize_page"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is False
+    assert data["page_state"] == "offline_error"
+    assert "offline" in data["action_summary"].lower() or "error" in data["action_summary"].lower()
+    assert "offline" in data["answer"].lower() or "connection" in data["answer"].lower()
+    assert len(data["evidence"]) == 0
+
+
+def test_summarize_page_with_empty_headings_and_short_content(client):
+    """Empty headings like SEARCH and LABELS are filtered from evidence, while legitimate short content and unique sections are preserved."""
+    page_id = "test-empty-headings-filter"
+    page_data = {
+        "page_id": page_id,
+        "title": "Security Dashboard",
+        "url": "https://internal.example.org/sec",
+        "wordCount": 280,
+        "content": (
+            "All personnel must complete quarterly security drills. "
+            "Release 4.1 deployed today with zero critical vulnerabilities."
+        ),
+        "chunks": [
+            {"id": 1, "heading": "SEARCH", "text": ""},
+            {"id": 2, "heading": "LABELS", "text": ""},
+            {"id": 3, "heading": "NAVIGATION", "text": "   "},
+            {
+                "id": 4,
+                "heading": "Security Drills",
+                "text": "All personnel must complete quarterly security drills."
+            },
+            {
+                "id": 5,
+                "heading": "Release Status",
+                "text": "Release 4.1 deployed today with zero critical vulnerabilities."
+            },
+            # Duplicate section
+            {
+                "id": 6,
+                "heading": "Security Drills",
+                "text": "All personnel must complete quarterly security drills."
+            }
+        ],
+        "links": [],
+        "images": []
+    }
+    r = client.post("/page/ingest", json=page_data)
+    assert r.status_code == 200
+    assert r.json()["page_state"] == "ready"
+
+    resp = client.post("/command/execute", json={
+        "instruction": "Summarize this page",
+        "page_id": page_id,
+        "intent": "summarize_page"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["page_state"] == "ready"
+
+    headings = [ev["heading"] for ev in data["evidence"]]
+    quotes = [ev["quote"] for ev in data["evidence"]]
+
+    # Empty headings must NOT appear in evidence
+    assert "SEARCH" not in headings
+    assert "LABELS" not in headings
+    assert "NAVIGATION" not in headings
+
+    # Legitimate non-empty sections must be present
+    assert any("Security Drills" in h for h in headings) or any("Release Status" in h for h in headings)
+
+    # All quotes must be non-empty and non-blank
+    for q in quotes:
+        assert q.strip() != ""
+
+    # No duplicate evidence items
+    assert len(headings) == len(set(headings))
+
+
 
 
 

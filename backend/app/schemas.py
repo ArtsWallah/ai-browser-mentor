@@ -83,6 +83,7 @@ class CommandExecutionResponse(BaseModel):
     limitations: str = ""
     provider: str = ""
     privacy_mode_applied: str = "hybrid"
+    page_state: str = "ready"
     error: str | None = None
 
 

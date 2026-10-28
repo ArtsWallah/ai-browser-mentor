@@ -11,7 +11,10 @@ from app.services.security_service import analyze_security_text, analyze_page_se
 from app.services.page_intelligence import (
     extract_page_outline,
     deterministic_summary,
-    build_safe_context
+    build_safe_context,
+    detect_page_state,
+    filter_and_deduplicate_chunks,
+    extract_grounded_evidence
 )
 from app.services.embedding_service import embed_text
 from app.services.vector_store import search
@@ -599,10 +602,62 @@ Please format clearly:
                 limitations="Page content not loaded.",
                 provider="deterministic_engine",
                 privacy_mode_applied=pm,
+                page_state="empty",
                 error="No page chunks"
             )
 
-        chunks = page.get("chunks", [])
+        # Check loading / offline error state
+        state = detect_page_state(page)
+        if state["is_loading_or_error"]:
+            detected_notice = f" (detected: {', '.join(state['detected_phrases'][:2])})" if state["detected_phrases"] else ""
+            suggestion = state.get("suggestion", "Please reload the page (F5) and wait for content to finish rendering, then retry.")
+            answer_text = (
+                f"### Page Not Ready for Summarization\n\n"
+                f"The page appears to still be loading or is currently unavailable{detected_notice}. "
+                f"The actual content has not loaded enough to generate a meaningful summary.\n\n"
+                f"**Suggestions:**\n"
+                f"- **Reload**: Refresh the tab (press F5 or Ctrl+R) and wait for the page to finish rendering.\n"
+                f"- **Retry**: Once your inbox, message, or article is visible on screen, click **Read Page** in the extension."
+            )
+            return CommandExecutionResponse(
+                success=False,
+                intent=intent,
+                tool_name=tool_name,
+                action_summary=f"Page has not finished loading ({state['page_state']}).",
+                answer=answer_text,
+                key_points=[
+                    "Page content is still loading or offline.",
+                    "No substantive content available to summarize.",
+                    suggestion
+                ],
+                evidence=[],
+                risk_assessment=None,
+                limitations="Summarization paused: detected loading or offline error screen.",
+                provider="page_state_detector",
+                privacy_mode_applied=pm,
+                page_state=state["page_state"],
+                error="Page not ready: loading or offline"
+            )
+
+        raw_chunks = page.get("chunks", [])
+        chunks = filter_and_deduplicate_chunks(raw_chunks)
+        if not chunks:
+            return CommandExecutionResponse(
+                success=False,
+                intent=intent,
+                tool_name=tool_name,
+                action_summary="Summarization aborted: no meaningful content blocks.",
+                answer="The page only contained empty headings or interface labels without supporting text. Please navigate to a page with article or email body content.",
+                key_points=["No substantive content sections found."],
+                evidence=[],
+                risk_assessment=None,
+                limitations="All extracted sections were empty or interface-only.",
+                provider="deterministic_engine",
+                privacy_mode_applied=pm,
+                page_state="empty",
+                error="Empty content chunks"
+            )
+
         safe_ctx = build_safe_context(chunks[:10])
         det = deterministic_summary(page)
 
@@ -629,10 +684,7 @@ Please format your response clearly:
             fallback_local_fn=summarize_fallback,
             temperature=0.1
         )
-        evidence_items = [
-            EvidenceItem(heading=c.get("heading", "Section"), quote=c.get("text", "")[:250], relevance_score=0.95)
-            for c in chunks[:4]
-        ]
+        evidence_items = extract_grounded_evidence(chunks, max_items=4)
         return CommandExecutionResponse(
             success=True,
             intent=intent,
@@ -644,7 +696,8 @@ Please format your response clearly:
             risk_assessment=None,
             limitations="Summary grounded strictly on visible page sections.",
             provider=provider_label,
-            privacy_mode_applied=pm
+            privacy_mode_applied=pm,
+            page_state="ready"
         )
 
     # 8. TOOL: compare_provided_content
@@ -719,10 +772,7 @@ Analyze:
             fallback_local_fn=compare_fallback,
             temperature=0.1
         )
-        evidence_items = [
-            EvidenceItem(heading=c.get("heading", "Source"), quote=c.get("text", "")[:250], relevance_score=0.9)
-            for c in cmp_chunks
-        ]
+        evidence_items = extract_grounded_evidence(cmp_chunks, max_items=4)
         return CommandExecutionResponse(
             success=True,
             intent=intent,
@@ -734,7 +784,8 @@ Analyze:
             risk_assessment=None,
             limitations="Fact-checked against visible page context only.",
             provider=provider_label,
-            privacy_mode_applied=pm
+            privacy_mode_applied=pm,
+            page_state="ready"
         )
 
     # 9. TOOL: answer_page_question (Default grounded RAG)
@@ -751,7 +802,30 @@ Analyze:
             limitations="Page content not loaded.",
             provider="deterministic_fallback",
             privacy_mode_applied=pm,
+            page_state="empty",
             error="No page chunks"
+        )
+
+    state = detect_page_state(page)
+    if state["is_loading_or_error"]:
+        return CommandExecutionResponse(
+            success=False,
+            intent="answer_page_question",
+            tool_name=tool_name,
+            action_summary=f"Page has not finished loading ({state['page_state']}).",
+            answer=(
+                f"### Page Not Ready\n\n"
+                f"The page appears to still be loading or is currently offline ({', '.join(state['detected_phrases'][:2])}). "
+                f"Please reload the page (F5) and wait for the content to fully load before asking questions."
+            ),
+            key_points=["Page content is not yet available.", state.get("suggestion", "Reload the page and try again.")],
+            evidence=[],
+            risk_assessment=None,
+            limitations="Q&A paused: detected loading or offline error screen.",
+            provider="page_state_detector",
+            privacy_mode_applied=pm,
+            page_state=state["page_state"],
+            error="Page not ready: loading or offline"
         )
 
     page_id = page.get("page_id", "")
@@ -800,10 +874,7 @@ If the webpage context does not contain the answer, say:
         fallback_local_fn=qa_fallback,
         temperature=0.05
     )
-    evidence_items = [
-        EvidenceItem(heading=c.get("heading", "Source"), quote=c.get("text", "")[:250], relevance_score=0.9)
-        for c in relevant_chunks
-    ]
+    evidence_items = extract_grounded_evidence(relevant_chunks, max_items=4)
     return CommandExecutionResponse(
         success=True,
         intent="answer_page_question",
@@ -815,7 +886,8 @@ If the webpage context does not contain the answer, say:
         risk_assessment=None,
         limitations="Grounded only on the visible sections of the active webpage.",
         provider=provider_label,
-        privacy_mode_applied=pm
+        privacy_mode_applied=pm,
+        page_state="ready"
     )
 
 

@@ -92,7 +92,7 @@ function escapeHtml(value) {
 
   function chunks(rootNode) {
 
-    const out = [];
+    const raw = [];
     let cur = null;
 
     rootNode
@@ -121,7 +121,7 @@ function escapeHtml(value) {
             type:"section"
           };
 
-          out.push(cur);
+          raw.push(cur);
 
         } else {
 
@@ -134,7 +134,7 @@ function escapeHtml(value) {
               type:"paragraph"
             };
 
-            out.push(cur);
+            raw.push(cur);
           }
 
           if (cur.text) {
@@ -144,6 +144,34 @@ function escapeHtml(value) {
           cur.text += t;
         }
       });
+
+    // Filter empty headings and sections with no meaningful supporting text
+    // Remove duplicate headings and redundant evidence chunks
+    // Preserve useful headings and their associated text
+    // Do not remove legitimate short content solely because it is short
+    const out = [];
+    const seen = new Set();
+
+    for (const c of raw) {
+      const textTrim = clean(c.text);
+      if (!textTrim) {
+        // Empty heading or section with no supporting text -> filter out
+        continue;
+      }
+      const headingTrim = clean(c.heading) || "Section";
+      const key = `${headingTrim.toLowerCase()}:::${textTrim.slice(0, 100).toLowerCase()}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+
+      out.push({
+        heading: headingTrim,
+        text: textTrim,
+        level: c.level,
+        type: c.type
+      });
+    }
 
     return out;
   }

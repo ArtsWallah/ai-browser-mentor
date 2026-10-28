@@ -63,6 +63,7 @@ const commandResultCard = document.getElementById("commandResultCard");
 const resultToolBadge = document.getElementById("resultToolBadge");
 const resultProviderBadge = document.getElementById("resultProviderBadge");
 const resultActionSummary = document.getElementById("resultActionSummary");
+const resultPageStateBanner = document.getElementById("resultPageStateBanner");
 const resultRiskBanner = document.getElementById("resultRiskBanner");
 const resultRiskTitle = document.getElementById("resultRiskTitle");
 const resultRiskSubtitle = document.getElementById("resultRiskSubtitle");
@@ -470,10 +471,20 @@ async function readCurrentPage() {
             throw new Error(`Backend ingest failed (${res.status})`);
         }
 
+        const ingestRes = await res.json().catch(() => ({}));
+
         const chunksCount = (pageData.chunks || []).length;
         if (pageStatusBadge) {
-            pageStatusBadge.textContent = `Ready (${chunksCount} chunks)`;
-            pageStatusBadge.className = "badge-status ready";
+            if (ingestRes.page_state === "loading") {
+                pageStatusBadge.textContent = "Loading State";
+                pageStatusBadge.className = "badge-status caution";
+            } else if (ingestRes.page_state === "offline_error") {
+                pageStatusBadge.textContent = "Offline/Error";
+                pageStatusBadge.className = "badge-status error";
+            } else {
+                pageStatusBadge.textContent = `Ready (${chunksCount} chunks)`;
+                pageStatusBadge.className = "badge-status ready";
+            }
         }
 
         // Populate Insights Tab
@@ -483,8 +494,14 @@ async function readCurrentPage() {
         scanAndRenderLinks(ingestPayload.links, ingestPayload.url);
 
         readPageText.textContent = "Page Ready";
-        showAlert("Page successfully understood and indexed!", "info");
-        setTimeout(clearAlert, 2500);
+        if (ingestRes.page_state === "loading") {
+            showAlert("Notice: Page appears to still be loading. Try reloading if incomplete.", "info");
+        } else if (ingestRes.page_state === "offline_error") {
+            showAlert("Warning: Page appears offline or displays a connection error.", "error");
+        } else {
+            showAlert("Page successfully understood and indexed!", "info");
+            setTimeout(clearAlert, 2500);
+        }
 
     } catch (err) {
         console.error("Read page error:", err);
@@ -645,6 +662,34 @@ function renderCommandResult(data) {
         resultActionSummary.textContent = data.action_summary || "Executed task.";
     }
 
+    // 2.5 Page State Notice (Loading or Error/Offline State)
+    if (resultPageStateBanner) {
+        const pageState = data.page_state || "";
+        if (pageState === "loading") {
+            resultPageStateBanner.className = "page-state-banner loading";
+            resultPageStateBanner.style.display = "flex";
+            resultPageStateBanner.innerHTML = `
+                <span style="font-size: 14px;">&#9203;</span>
+                <div>
+                    <strong>Page Incomplete or Still Loading</strong>
+                    <div>The source page appears to still be loading. Try refreshing the tab (F5) and re-extracting once loaded.</div>
+                </div>
+            `;
+        } else if (pageState === "offline_error") {
+            resultPageStateBanner.className = "page-state-banner offline_error";
+            resultPageStateBanner.style.display = "flex";
+            resultPageStateBanner.innerHTML = `
+                <span style="font-size: 14px;">&#9888;</span>
+                <div>
+                    <strong>Page Offline or Unavailable</strong>
+                    <div>The source page encountered a connection error or is offline. Please check your network and reload the page.</div>
+                </div>
+            `;
+        } else {
+            resultPageStateBanner.style.display = "none";
+        }
+    }
+
     // 3. Risk Assessment Banner (if security/link audit ran)
     if (data.risk_assessment && resultRiskBanner) {
         const risk = data.risk_assessment;
@@ -680,16 +725,21 @@ function renderCommandResult(data) {
         }
     }
 
-    // 6. Grounded Evidence Cards
+    // 6. Grounded Evidence Cards (filter empty cards like SEARCH or LABELS)
     if (resultEvidenceContainer && resultEvidenceCards) {
-        const evidence = data.evidence || [];
-        if (evidence.length > 0) {
+        const rawEvidence = data.evidence || [];
+        const validEvidence = rawEvidence.filter(ev => {
+            const quote = (ev.quote || "").trim();
+            return quote.length > 0;
+        });
+
+        if (validEvidence.length > 0) {
             resultEvidenceContainer.style.display = "block";
             resultEvidenceCards.innerHTML = "";
-            evidence.slice(0, 4).forEach(ev => {
+            validEvidence.slice(0, 4).forEach(ev => {
                 const card = document.createElement("div");
                 card.className = "evidence-card";
-                card.innerHTML = `<strong>${escapeHtml(ev.heading || "Page Context")}</strong><span>${escapeHtml(ev.quote || "")}</span>`;
+                card.innerHTML = `<strong>${escapeHtml(ev.heading || "Page Section")}</strong><span>${escapeHtml(ev.quote)}</span>`;
                 resultEvidenceCards.appendChild(card);
             });
         } else {
