@@ -155,6 +155,44 @@ def extract_suspicious_evidence(text: str) -> tuple[float, list[str]]:
     return score, indicators
 
 
+def _resolve_model_artifact(
+    model_path: str | Path | None,
+    env_var: str,
+    default_relative: str,
+) -> Path | None:
+    """
+    Resolve model path portably:
+    1. Explicit path if provided.
+    2. Environment variable if configured.
+    3. Default path relative to backend root or current working directory.
+    Returns resolved Path if file exists, else None.
+    """
+    raw = model_path or os.getenv(env_var)
+    backend_dir = Path(__file__).resolve().parents[2]
+
+    if raw:
+        candidate = Path(raw).expanduser()
+        if candidate.is_file():
+            return candidate
+        cand_backend = (backend_dir / candidate).resolve()
+        if cand_backend.is_file():
+            return cand_backend
+        cand_cwd = (Path.cwd() / candidate).resolve()
+        if cand_cwd.is_file():
+            return cand_cwd
+        return None
+
+    # Check default relative path
+    cand_default = (backend_dir / default_relative).resolve()
+    if cand_default.is_file():
+        return cand_default
+    cand_cwd_default = (Path.cwd() / default_relative).resolve()
+    if cand_cwd_default.is_file():
+        return cand_cwd_default
+
+    return None
+
+
 class MultiSignalCandidateRanker:
     """
     Evaluates and ranks candidate emerging patterns by combining structural novelty,
@@ -176,36 +214,35 @@ class MultiSignalCandidateRanker:
         tactic_model_path: str | Path | None,
     ) -> None:
         # Load spam classifier
-        if spam_model_path and Path(spam_model_path).is_file():
+        resolved_spam = _resolve_model_artifact(
+            spam_model_path,
+            env_var="SCAMSHIELD_SPAM_MODEL_PATH",
+            default_relative="data/models/baseline_tfidf_logistic.pkl",
+        )
+        if resolved_spam:
             try:
                 import joblib
-                self.spam_model = joblib.load(spam_model_path)
+                self.spam_model = joblib.load(resolved_spam)
             except Exception:
                 self.spam_model = None
         else:
-            default_spam = Path(r"C:\Users\DELL\Desktop\ScamShield-AI\models\baseline_tfidf_logistic.pkl")
-            if default_spam.is_file():
-                try:
-                    import joblib
-                    self.spam_model = joblib.load(default_spam)
-                except Exception:
-                    self.spam_model = None
+            self.spam_model = None
 
         # Load multi-tactic baseline classifier
-        if tactic_model_path and Path(tactic_model_path).is_file():
+        tactic_env = os.getenv("SCAMSHIELD_TACTIC_MODEL_PATH") or os.getenv("SCAMSHIELD_MODEL_PATH")
+        resolved_tactic = _resolve_model_artifact(
+            tactic_model_path or tactic_env,
+            env_var="SCAMSHIELD_MODEL_PATH",
+            default_relative="data/models/tfidf_multilabel_baseline.joblib",
+        )
+        if resolved_tactic:
             try:
                 import joblib
-                self.tactic_model = joblib.load(tactic_model_path)
+                self.tactic_model = joblib.load(resolved_tactic)
             except Exception:
                 self.tactic_model = None
         else:
-            default_tactic = Path(r"C:\Users\DELL\Desktop\ScamShield-AI\models\tfidf_multilabel_baseline.joblib")
-            if default_tactic.is_file():
-                try:
-                    import joblib
-                    self.tactic_model = joblib.load(default_tactic)
-                except Exception:
-                    self.tactic_model = None
+            self.tactic_model = None
 
     def evaluate_candidate(
         self,

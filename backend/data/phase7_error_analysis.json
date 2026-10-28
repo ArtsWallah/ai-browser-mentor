@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "dataset_path": "C:\\Users\\DELL\\Desktop\\ScamShield-AI\\data\\processed\\uci_sms_clean.csv",
+    "dataset_path": "data/processed/uci_sms_clean.csv",
     "training_samples": 3642,
     "test_samples": 1527,
     "train_positive_spam": 488,
