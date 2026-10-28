@@ -42,10 +42,12 @@ class AssistantQueryRequest(BaseModel):
 class SecurityTextRequest(BaseModel):
     text: str = Field(min_length=1, max_length=15000)
     context: str = Field(default="selection", max_length=50)
+    disabled_checks: list[str] = Field(default_factory=list)
 
 
 class PageSummaryRequest(BaseModel):
     page_id: str = Field(min_length=1, max_length=256)
+    disabled_checks: list[str] = Field(default_factory=list)
 
 
 class EvidenceItem(BaseModel):

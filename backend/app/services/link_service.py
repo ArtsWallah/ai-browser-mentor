@@ -47,18 +47,24 @@ def contains_homoglyphs(domain: str) -> bool:
 
 def check_typosquatting(hostname: str) -> str | None:
     """Check if the hostname mimics a popular domain."""
-    clean_host = hostname.lower()
+    if not hostname:
+        return None
+    clean_host = hostname.lower().strip(".")
     for pop in POPULAR_DOMAINS:
+        # Authentic domain or legitimate subdomain of the popular domain (e.g. support.google.com)
+        if clean_host == pop or clean_host.endswith("." + pop):
+            continue
+
         pop_base = pop.split(".")[0]
-        # Direct impersonation e.g. paypa1.com, google-security-alert.com
-        if pop != clean_host:
-            # Check if brand name is in subdomains or hyphens
-            if f"-{pop_base}" in clean_host or f"{pop_base}-" in clean_host:
-                return f"Contains brand name '{pop_base}' in hyphenated domain"
-            # Number substitutions: 0 -> o, 1 -> l
+        # Deceptive brand name in hyphenated domain (e.g. paypal-security.com, google-verify.net)
+        if f"-{pop_base}" in clean_host or f"{pop_base}-" in clean_host:
+            return f"Contains brand name '{pop_base}' in hyphenated domain"
+
+        # Character substitutions (e.g. paypa1.com, g00gle.com)
+        if any(char in clean_host for char in "01"):
             normalized = clean_host.replace("0", "o").replace("1", "l")
-            if pop in normalized or pop_base in normalized.split("."):
-                return f"Possible lookalike for '{pop}'"
+            if normalized == pop or normalized.endswith("." + pop):
+                return f"Possible lookalike for '{pop}' (character substitution)"
     return None
 
 
@@ -133,23 +139,23 @@ def analyze_single_link(url: str, text: str = "", page_url: str = "") -> dict[st
                 "reasons": [f"Direct {scheme} link."],
                 "is_external": False
             }
-        if norm_url.startswith("#"):
+        if norm_url.startswith(("#", "/")) or not norm_url or norm_url == "/":
             return {
                 "url": norm_url,
                 "normalized_url": norm_url,
                 "text": clean_label,
                 "risk": "Low",
                 "score": 0,
-                "reasons": ["Internal page anchor link."],
+                "reasons": ["Internal page navigation link."],
                 "is_external": False
             }
         return {
             "url": norm_url,
             "normalized_url": norm_url,
             "text": clean_label,
-            "risk": "Medium",
-            "score": 40,
-            "reasons": ["Link does not specify a valid hostname."],
+            "risk": "Low",
+            "score": 0,
+            "reasons": ["Relative internal navigation link."],
             "is_external": False
         }
 

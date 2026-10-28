@@ -50,16 +50,80 @@ const S = {
     );
   };
 
-  const label = e =>
-    clean(
-      e?.innerText ||
-      e?.textContent ||
-      e?.getAttribute("aria-label") ||
-      e?.title ||
-      e?.placeholder ||
-      e?.value ||
+  const isEditableControl = e => {
+    if (!e || !(e instanceof Element || typeof e === "object")) return false;
+    const tag = (e.tagName || "").toLowerCase();
+    if (tag === "textarea" || tag === "select") return true;
+    if (tag === "input") {
+      const type = (e.getAttribute?.("type") || e.type || "text").toLowerCase();
+      const nonEditableTypes = ["button", "submit", "reset", "image", "checkbox", "radio", "color", "range"];
+      return !nonEditableTypes.includes(type);
+    }
+    if (e.isContentEditable) return true;
+    if (e.hasAttribute?.("contenteditable")) {
+      const ce = (e.getAttribute("contenteditable") || "").toLowerCase();
+      if (ce !== "false") return true;
+    }
+    const role = (e.getAttribute?.("role") || "").toLowerCase();
+    if (role === "textbox" || role === "searchbox") {
+      return true;
+    }
+    return false;
+  };
+
+  const label = e => {
+    if (!e || !(e instanceof Element || typeof e === "object")) return "";
+
+    const tag = (e.tagName || "").toLowerCase();
+    const isInput = tag === "input";
+    const isTextarea = tag === "textarea";
+    const isSelect = tag === "select";
+    const isEditable = isEditableControl(e);
+
+    // Safe accessibility and structural attributes
+    const ariaLabel = clean(e.getAttribute?.("aria-label"));
+    if (ariaLabel) return ariaLabel;
+
+    const placeholder = clean(e.getAttribute?.("placeholder") || e.placeholder);
+    const title = clean(e.getAttribute?.("title") || e.title);
+
+    // For editable controls (inputs, textareas, contenteditable, select),
+    // NEVER extract element.value, innerText, or textContent.
+    if (isEditable || isTextarea || isSelect) {
+      if (placeholder) return placeholder;
+      if (title) return title;
+      try {
+        if (e.labels && e.labels.length > 0) {
+          const lbl = clean(e.labels[0].textContent);
+          if (lbl) return lbl;
+        }
+      } catch (_) {}
+      return "";
+    }
+
+    // For button-type inputs (e.g. <input type="submit" value="Sign In">)
+    if (isInput) {
+      const type = (e.getAttribute?.("type") || e.type || "text").toLowerCase();
+      if (["submit", "button", "reset"].includes(type)) {
+        const btnVal = clean(e.getAttribute?.("value"));
+        if (btnVal) return btnVal;
+        if (title) return title;
+        return type.charAt(0).toUpperCase() + type.slice(1);
+      }
+      if (placeholder) return placeholder;
+      if (title) return title;
+      return "";
+    }
+
+    // For standard non-editable elements (a, button, headings, etc.)
+    return clean(
+      e.innerText ||
+      e.textContent ||
+      title ||
+      placeholder ||
       ""
     );
+  };
 
   const esc = v =>
     String(v ?? "").replace(
@@ -926,17 +990,6 @@ function scan() {
       document.body.cloneNode(true);
       
       
-// ============================================================
-// DYNAMIC PAGE SUPPORT
-// ============================================================
-
-const liveText = clean(
-    document.body.innerText ||
-    document.body.textContent ||
-    ""
-);
-
-
     clone
       .querySelectorAll(
         "script,style,noscript,iframe,svg,canvas,video,audio"
@@ -945,13 +998,29 @@ const liveText = clean(
         e => e.remove()
       );
 
+    // Prevent editable field contents, textareas, inputs, contenteditable elements,
+    // and textbox/searchbox controls from leaking into extracted page text or chunks
+    clone
+      .querySelectorAll(
+        "textarea, input, select, [contenteditable], [role='textbox'], [role='searchbox']"
+      )
+      .forEach(e => {
+        const ce = (e.getAttribute?.("contenteditable") ?? "").toLowerCase();
+        if (ce === "false") {
+          const tag = (e.tagName || "").toLowerCase();
+          const role = (e.getAttribute?.("role") || "").toLowerCase();
+          if (["textarea", "input", "select"].includes(tag) || role === "textbox" || role === "searchbox") {
+            e.remove();
+          }
+        } else {
+          e.remove();
+        }
+      });
 
-    const body =
-    liveText ||
-    clean(
-        clone.innerText ||
-        clone.textContent ||
-        ""
+    const body = clean(
+      clone.innerText ||
+      clone.textContent ||
+      ""
     );
 
 
@@ -1446,14 +1515,11 @@ function findImage(q) {
             }
         });
 
-    console.log(
-        "IMAGE FINDER:",
-        {
-            query,
-            score: bestScore,
-            caption: best?.caption || null
-        }
-    );
+    if (DEBUG) {
+      console.log(
+        "IMAGE FINDER: matched candidate"
+      );
+    }
 
     return best;
 }
@@ -2005,6 +2071,8 @@ function enableHover() {
   // BACKEND
   // ============================================================
 
+  const DEBUG = false;
+
  async function post(
   path,
   payload
@@ -2013,11 +2081,13 @@ function enableHover() {
  const url =
     API_BASE_URL + path;
 
-  console.log(
-    "AI MENTOR: POST",
-    url,
-    payload
-  );
+  // Debug logging is disabled by default and NEVER exposes payloads or user content
+  if (DEBUG) {
+    console.log(
+      "AI MENTOR: POST",
+      url
+    );
+  }
 
 
   let response;
@@ -2080,18 +2150,18 @@ function enableHover() {
   }
 
 
-  console.log(
-    "AI MENTOR: RESPONSE",
-    {
-      status:
-        response.status,
+  if (DEBUG) {
+    console.log(
+      "AI MENTOR: RESPONSE",
+      {
+        status:
+          response.status,
 
-      ok:
-        response.ok,
-
-      data
-    }
-  );
+        ok:
+          response.ok
+      }
+    );
+  }
 
 
   if (
@@ -2138,13 +2208,14 @@ function enableHover() {
 
   }
 
-  console.log(
-    "AI MENTOR: ASKING",
-    {
-      pageId: S.pageId,
-      question: question
-    }
-  );
+  if (DEBUG) {
+    console.log(
+      "AI MENTOR: ASKING",
+      {
+        pageId: S.pageId
+      }
+    );
+  }
 
   const result =
     await post(
@@ -2161,10 +2232,15 @@ function enableHover() {
       }
     );
 
-  console.log(
-    "AI MENTOR: ASK RESPONSE",
-    result
-  );
+  if (DEBUG) {
+    console.log(
+      "AI MENTOR: ASK RESPONSE",
+      {
+        success: result?.success,
+        ok: Boolean(result?.answer)
+      }
+    );
+  }
 
   if (
     !result ||
@@ -4374,13 +4450,7 @@ if (S.hoverEnabled) {
 
       if (t === "GET_SELECTION") {
         try {
-          let sel = window.getSelection() ? window.getSelection().toString().trim() : "";
-          if (!sel && document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA")) {
-            const el = document.activeElement;
-            if (typeof el.selectionStart === "number" && typeof el.selectionEnd === "number" && el.selectionStart !== el.selectionEnd) {
-              sel = el.value.substring(el.selectionStart, el.selectionEnd).trim();
-            }
-          }
+          const sel = window.getSelection() ? window.getSelection().toString().trim() : "";
           send({
             success: true,
             has_selection: Boolean(sel),

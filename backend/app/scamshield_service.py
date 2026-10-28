@@ -12,6 +12,29 @@ BACKEND_ENV = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(BACKEND_ENV, override=False)
 
 
+def resolve_model_path(model_path: str | Path | None = None) -> Path:
+    """Resolve model path against absolute, backend root, or current working directory."""
+    if not model_path:
+        model_path = os.getenv("SCAMSHIELD_MODEL_PATH")
+    if not model_path:
+        raise RuntimeError("SCAMSHIELD_MODEL_PATH is not configured.")
+
+    raw_path = Path(model_path).expanduser()
+    if raw_path.is_file():
+        return raw_path
+
+    backend_dir = Path(__file__).resolve().parents[1]
+    candidate = (backend_dir / raw_path).resolve()
+    if candidate.is_file():
+        return candidate
+
+    candidate_cwd = (Path.cwd() / raw_path).resolve()
+    if candidate_cwd.is_file():
+        return candidate_cwd
+
+    return candidate
+
+
 @lru_cache(maxsize=1)
 def load_model() -> dict[str, Any]:
     """Load and validate the ScamShield multi-tactic model artifact."""
@@ -20,9 +43,10 @@ def load_model() -> dict[str, Any]:
     if not model_path:
         raise RuntimeError("SCAMSHIELD_MODEL_PATH is not configured.")
 
-    path = Path(model_path).expanduser()
+    path = resolve_model_path(model_path)
+
     if not path.is_file():
-        raise RuntimeError("ScamShield model file was not found.")
+        raise RuntimeError(f"ScamShield model file was not found at {model_path}.")
 
     model = joblib.load(path)
 

@@ -24038,6 +24038,34 @@
           "old_status": "benign",
           "new_status": "benign",
           "rationale": "Automated test decision."
+        },
+        {
+          "timestamp": "2026-10-28T05:38:16.008862+00:00",
+          "reviewer": "test_runner",
+          "old_status": "benign",
+          "new_status": "benign",
+          "rationale": "Automated test decision."
+        },
+        {
+          "timestamp": "2026-10-28T05:41:25.211344+00:00",
+          "reviewer": "test_runner",
+          "old_status": "benign",
+          "new_status": "benign",
+          "rationale": "Automated test decision."
+        },
+        {
+          "timestamp": "2026-10-28T05:43:54.148234+00:00",
+          "reviewer": "test_runner",
+          "old_status": "benign",
+          "new_status": "benign",
+          "rationale": "Automated test decision."
+        },
+        {
+          "timestamp": "2026-10-28T13:35:39.710596+00:00",
+          "reviewer": "test_runner",
+          "old_status": "benign",
+          "new_status": "benign",
+          "rationale": "Automated test decision."
         }
       ],
       "medoid": {
@@ -25015,6 +25043,74 @@
       "source_provenance": [
         "TEST"
       ]
+    },
+    "noise_api_12": {
+      "cluster_id": "noise_api_12",
+      "n_examples": 1,
+      "novelty_score": 0.9823,
+      "associated_tactics": [
+        "credential_request"
+      ],
+      "tactic_confidence": "weak",
+      "review_status": "pending",
+      "review_history": [],
+      "medoid": {
+        "id": "api_12",
+        "message": "Scam message example number 12",
+        "source": "TEST"
+      },
+      "representative_examples": [
+        {
+          "id": "api_12",
+          "message": "Scam message example number 12",
+          "source": "TEST",
+          "external_label": null
+        }
+      ],
+      "shared_ngrams": [],
+      "limitations": [
+        "This is a single noise point, not a cluster. No co-occurring examples were found nearby in embedding space.",
+        "Nearest known tactic: credential_request (similarity: 0.018). Low similarity to all known tactics — semantically distant."
+      ],
+      "algorithm": "HDBSCAN_noise",
+      "import_timestamp": "2026-10-28T05:38:15.415263+00:00",
+      "source_provenance": [
+        "TEST"
+      ]
+    },
+    "noise_api_3": {
+      "cluster_id": "noise_api_3",
+      "n_examples": 1,
+      "novelty_score": 0.9632,
+      "associated_tactics": [
+        "fear"
+      ],
+      "tactic_confidence": "weak",
+      "review_status": "pending",
+      "review_history": [],
+      "medoid": {
+        "id": "api_3",
+        "message": "Scam message example number 3",
+        "source": "TEST"
+      },
+      "representative_examples": [
+        {
+          "id": "api_3",
+          "message": "Scam message example number 3",
+          "source": "TEST",
+          "external_label": null
+        }
+      ],
+      "shared_ngrams": [],
+      "limitations": [
+        "This is a single noise point, not a cluster. No co-occurring examples were found nearby in embedding space.",
+        "Nearest known tactic: fear (similarity: 0.037). Low similarity to all known tactics — semantically distant."
+      ],
+      "algorithm": "HDBSCAN_noise",
+      "import_timestamp": "2026-10-28T05:43:53.718592+00:00",
+      "source_provenance": [
+        "TEST"
+      ]
     }
   },
   "audit_log": [
@@ -25080,6 +25176,36 @@
     },
     {
       "timestamp": "2026-10-28T00:03:10.987331+00:00",
+      "action": "review",
+      "detail": "Pattern 'noise_2816': benign → benign by test_runner"
+    },
+    {
+      "timestamp": "2026-10-28T05:38:15.415298+00:00",
+      "action": "import",
+      "detail": "Imported 1 new patterns"
+    },
+    {
+      "timestamp": "2026-10-28T05:38:16.008890+00:00",
+      "action": "review",
+      "detail": "Pattern 'noise_2816': benign → benign by test_runner"
+    },
+    {
+      "timestamp": "2026-10-28T05:41:25.211391+00:00",
+      "action": "review",
+      "detail": "Pattern 'noise_2816': benign → benign by test_runner"
+    },
+    {
+      "timestamp": "2026-10-28T05:43:53.718625+00:00",
+      "action": "import",
+      "detail": "Imported 1 new patterns"
+    },
+    {
+      "timestamp": "2026-10-28T05:43:54.148262+00:00",
+      "action": "review",
+      "detail": "Pattern 'noise_2816': benign → benign by test_runner"
+    },
+    {
+      "timestamp": "2026-10-28T13:35:39.710616+00:00",
       "action": "review",
       "detail": "Pattern 'noise_2816': benign → benign by test_runner"
     }
