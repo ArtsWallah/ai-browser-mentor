@@ -3,6 +3,7 @@
 # Clean FastAPI + Groq + Grounded Page Retrieval
 # ============================================================
 from collections import OrderedDict
+import hmac
 import json
 import os
 import re
@@ -12,7 +13,7 @@ from typing import Any
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -35,6 +36,7 @@ load_dotenv()
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 DEBUG_ACCESS_TOKEN = os.getenv("DEBUG_ACCESS_TOKEN", "").strip()
 DEBUG_LOGS = os.getenv("DEBUG_LOGS", "false").lower() in ("true", "1", "yes")
+DISCOVERY_ACCESS_TOKEN = os.getenv("DISCOVERY_ACCESS_TOKEN", "").strip()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
@@ -153,32 +155,91 @@ app.add_middleware(RequestSizeLimitMiddleware, max_body_size=MAX_REQUEST_BODY_SI
 # CORS CONFIGURATION
 # ============================================================
 
+EXTENSION_ID_PATTERN = re.compile(r"^[a-z]{32}$")
+
+
+def parse_and_validate_extension_ids(*raw_id_strings: str | None) -> list[str]:
+    """Extract and validate 32-character lowercase Chrome extension IDs."""
+    valid_ids: list[str] = []
+    for raw in raw_id_strings:
+        if not raw:
+            continue
+        for item in raw.split(","):
+            cleaned = item.strip().lower()
+            if EXTENSION_ID_PATTERN.match(cleaned):
+                valid_ids.append(cleaned)
+    return list(dict.fromkeys(valid_ids))
+
+
+def build_allowed_origins(
+    allowed_origins_raw: str | None = None,
+    extension_id_raw: str | None = None,
+    allowed_extension_ids_raw: str | None = None,
+    allow_localhost: bool = True,
+) -> list[str]:
+    """
+    Construct explicit allowed origins list safely:
+    - Parses comma-separated ALLOWED_ORIGINS
+    - Adds localhost origins if allow_localhost is True
+    - Adds explicitly validated chrome-extension://<id> origins
+    - Ignores malformed extension IDs
+    """
+    origins: list[str] = []
+    if allowed_origins_raw:
+        origins.extend([o.strip() for o in allowed_origins_raw.split(",") if o.strip()])
+
+    if allow_localhost:
+        origins.extend([
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ])
+
+    valid_ext_ids = parse_and_validate_extension_ids(extension_id_raw, allowed_extension_ids_raw)
+    for ext_id in valid_ext_ids:
+        origins.append(f"chrome-extension://{ext_id}")
+
+    return list(dict.fromkeys(origins))
+
+
+def resolve_allow_origin_regex(allow_regex_env: str | bool | None, environment: str) -> str | None:
+    """
+    Determine if arbitrary extension regex is allowed.
+    Strictly disabled by default and NEVER permitted in production mode.
+    """
+    if environment.lower() == "production":
+        return None
+
+    if isinstance(allow_regex_env, bool):
+        is_allowed = allow_regex_env
+    elif isinstance(allow_regex_env, str):
+        is_allowed = allow_regex_env.strip().lower() in ("true", "1", "yes")
+    else:
+        is_allowed = False
+
+    return r"^chrome-extension://[a-z]{32}$" if is_allowed else None
+
+
 ALLOWED_ORIGINS_RAW = os.getenv("ALLOWED_ORIGINS", "").strip()
 EXTENSION_ID = os.getenv("EXTENSION_ID", "").strip()
+ALLOWED_EXTENSION_IDS_RAW = os.getenv("ALLOWED_EXTENSION_IDS", "").strip()
 ALLOW_LOCALHOST = os.getenv("ALLOW_LOCALHOST", "true").lower() in ("true", "1", "yes")
-ALLOW_EXTENSION_REGEX = os.getenv("ALLOW_EXTENSION_REGEX", "true").lower() in ("true", "1", "yes")
+# Unrestricted extension regex matching is strictly disabled by default.
+ALLOW_EXTENSION_REGEX = os.getenv("ALLOW_EXTENSION_REGEX", "false").lower() in ("true", "1", "yes")
 
-allowed_origins: list[str] = []
-if ALLOWED_ORIGINS_RAW:
-    allowed_origins.extend([o.strip() for o in ALLOWED_ORIGINS_RAW.split(",") if o.strip()])
+allowed_origins = build_allowed_origins(
+    allowed_origins_raw=ALLOWED_ORIGINS_RAW,
+    extension_id_raw=EXTENSION_ID,
+    allowed_extension_ids_raw=ALLOWED_EXTENSION_IDS_RAW,
+    allow_localhost=ALLOW_LOCALHOST,
+)
 
-if ALLOW_LOCALHOST:
-    allowed_origins.extend([
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ])
-
-if EXTENSION_ID:
-    allowed_origins.append(f"chrome-extension://{EXTENSION_ID}")
-
-allowed_origins = list(dict.fromkeys(allowed_origins))
+allow_origin_regex = resolve_allow_origin_regex(ALLOW_EXTENSION_REGEX, ENVIRONMENT)
 has_wildcard = "*" in allowed_origins or not allowed_origins
 allow_credentials = False if has_wildcard else True
-allow_origin_regex = r"^chrome-extension://[a-z]{32}$" if ALLOW_EXTENSION_REGEX else None
 
 app.add_middleware(
     CORSMiddleware,
@@ -2713,7 +2774,39 @@ from app.schemas import (
     PatternEntry,
     PatternReviewRequest,
 )
-from fastapi import HTTPException as _HTTPException
+_HTTPException = HTTPException
+
+def verify_discovery_access(
+    x_discovery_token: str | None = Header(None, alias="X-Discovery-Token"),
+    authorization: str | None = Header(None),
+):
+    """
+    Guards batch discovery execution and pattern registry mutation endpoints.
+    Requires a valid DISCOVERY_ACCESS_TOKEN via 'X-Discovery-Token' or 'Authorization: Bearer <token>'.
+    If DISCOVERY_ACCESS_TOKEN is not configured, endpoints are safely disabled.
+    """
+    configured_token = os.getenv("DISCOVERY_ACCESS_TOKEN", "").strip() or DISCOVERY_ACCESS_TOKEN
+    if not configured_token:
+        raise _HTTPException(
+            status_code=403,
+            detail="Discovery endpoints are disabled because DISCOVERY_ACCESS_TOKEN is not configured.",
+        )
+
+    provided_token = x_discovery_token
+    if not provided_token and authorization and authorization.startswith("Bearer "):
+        provided_token = authorization[7:].strip()
+
+    if not provided_token:
+        raise _HTTPException(
+            status_code=401,
+            detail="Discovery authorization token required.",
+        )
+
+    if not hmac.compare_digest(provided_token, configured_token):
+        raise _HTTPException(
+            status_code=403,
+            detail="Invalid discovery authorization token.",
+        )
 
 
 @app.post(
@@ -2721,6 +2814,7 @@ from fastapi import HTTPException as _HTTPException
     response_model=DiscoveryRunResponse,
     summary="Run emerging-pattern discovery pipeline (batch research only)",
     tags=["Phase 5 - Discovery"],
+    dependencies=[Depends(verify_discovery_access)],
 )
 @limiter.limit("5/minute")
 async def scamshield_discovery_run(request: Request, body: DiscoveryRunRequest):
@@ -2821,6 +2915,7 @@ async def scamshield_discovery_list_patterns(
     "/scamshield/discovery/review",
     summary="Record a human review decision for a discovered pattern",
     tags=["Phase 5 - Discovery"],
+    dependencies=[Depends(verify_discovery_access)],
 )
 async def scamshield_discovery_review(request: PatternReviewRequest):
     """

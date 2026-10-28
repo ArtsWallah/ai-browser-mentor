@@ -13,13 +13,23 @@ Tests:
 import os
 import time
 from pathlib import Path
+import numpy as np
 import pytest
 from starlette.testclient import TestClient
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
 from app import main as main_module
-from app.main import app, page_store, BoundedPageStore, RequestSizeLimitMiddleware
+from app.main import (
+    app,
+    page_store,
+    BoundedPageStore,
+    RequestSizeLimitMiddleware,
+    build_allowed_origins,
+    parse_and_validate_extension_ids,
+    resolve_allow_origin_regex,
+)
 from app.services.vector_store import (
     init_vector_store_dir,
     cleanup_temporary_vector_store,
@@ -229,7 +239,7 @@ def test_rate_limiting_enforcement_429():
 # ============================================================
 
 def test_cors_preflight_allowed_origin(client):
-    """OPTIONS preflight with allowed localhost or extension origin returns CORS headers."""
+    """OPTIONS preflight with allowed localhost origin returns CORS headers."""
     resp = client.options(
         "/command/execute",
         headers={
@@ -242,8 +252,8 @@ def test_cors_preflight_allowed_origin(client):
     assert resp.headers.get("access-control-allow-origin") == "http://localhost:8000"
 
 
-def test_cors_extension_regex_origin(client):
-    """OPTIONS preflight with valid Chrome extension origin (32 char id) matches regex."""
+def test_cors_unconfigured_extension_origin_denied(client):
+    """Unconfigured Chrome extension origin is DENIED when arbitrary extension regex is disabled."""
     extension_origin = "chrome-extension://abcdefghijklmnopqrstuvwxyzabcdef"
     resp = client.options(
         "/command/execute",
@@ -253,12 +263,71 @@ def test_cors_extension_regex_origin(client):
             "Access-Control-Request-Headers": "Content-Type",
         }
     )
+    assert resp.headers.get("access-control-allow-origin") is None
+
+
+def test_cors_configured_extension_origin_allowed():
+    """Explicitly configured Chrome extension origin is granted CORS headers."""
+    ext_id = "abcdefghijklmnopqrstuvwxyzabcdef"
+    allowed = build_allowed_origins(extension_id_raw=ext_id)
+    assert f"chrome-extension://{ext_id}" in allowed
+
+    test_app = FastAPI()
+    test_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
+
+    @test_app.post("/test-cors")
+    def _endpoint():
+        return {"ok": True}
+
+    test_client = TestClient(test_app)
+    resp = test_client.options(
+        "/test-cors",
+        headers={
+            "Origin": f"chrome-extension://{ext_id}",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Content-Type",
+        }
+    )
     assert resp.status_code in (200, 204)
-    assert resp.headers.get("access-control-allow-origin") == extension_origin
+    assert resp.headers.get("access-control-allow-origin") == f"chrome-extension://{ext_id}"
+
+
+def test_cors_malformed_extension_id_ignored_safely():
+    """Malformed extension IDs (not 32-char lowercase) are dropped and never added to allowed origins."""
+    malformed_inputs = [
+        "short",
+        "UPPERCASEANDNUMBERS1234567890123",
+        "has-hyphens-and-bad-chars-12345",
+        "has_special!_characters_12345678",
+        "toolongextensionidstringthatshouldnevermatch32chars",
+    ]
+    validated = parse_and_validate_extension_ids(*malformed_inputs)
+    assert len(validated) == 0
+
+    origins = build_allowed_origins(extension_id_raw=",".join(malformed_inputs))
+    for o in origins:
+        assert not o.startswith("chrome-extension://")
+
+
+def test_cors_production_never_enables_extension_regex():
+    """In production mode, unrestricted extension regex matching is ALWAYS disabled."""
+    assert resolve_allow_origin_regex("true", "production") is None
+    assert resolve_allow_origin_regex(True, "production") is None
+    assert resolve_allow_origin_regex("1", "production") is None
+    # In non-production, regex is only enabled when explicitly opted-in
+    assert resolve_allow_origin_regex("true", "development") == r"^chrome-extension://[a-z]{32}$"
+    assert resolve_allow_origin_regex("false", "development") is None
+    assert resolve_allow_origin_regex(None, "development") is None
 
 
 def test_cors_disallowed_origin(client):
-    """Arbitrary untrusted origin is NOT granted CORS origin header."""
+    """Arbitrary untrusted web origin is NOT granted CORS origin header."""
     resp = client.options(
         "/command/execute",
         headers={
@@ -317,3 +386,103 @@ def test_resolve_model_path_machine_agnostic():
     # Even if file doesn't exist in a bare clone, it returns a clean Path object
     assert isinstance(resolved, Path)
     assert not str(resolved).startswith("C:/Users/SomeUser/Desktop")
+
+
+# ============================================================
+# 8. DISCOVERY ENDPOINT AUTHORIZATION (PHASE 1C)
+# ============================================================
+
+def test_discovery_run_without_token_rejected_401(client, monkeypatch):
+    """Calling POST /scamshield/discovery/run without authorization header returns 401 when token configured."""
+    monkeypatch.setenv("DISCOVERY_ACCESS_TOKEN", "test-secret-token")
+    monkeypatch.setattr(main_module, "DISCOVERY_ACCESS_TOKEN", "test-secret-token")
+    resp = client.post("/scamshield/discovery/run", json={"examples": [{"id": "1", "message": "test"}]})
+    assert resp.status_code == 401
+    assert "token required" in resp.json()["detail"].lower()
+
+
+def test_discovery_run_with_invalid_token_rejected_403(client, monkeypatch):
+    """Calling POST /scamshield/discovery/run with invalid token returns 403."""
+    monkeypatch.setenv("DISCOVERY_ACCESS_TOKEN", "test-secret-token")
+    monkeypatch.setattr(main_module, "DISCOVERY_ACCESS_TOKEN", "test-secret-token")
+    resp = client.post(
+        "/scamshield/discovery/run",
+        json={"examples": [{"id": "1", "message": "test"}]},
+        headers={"X-Discovery-Token": "wrong-token-value"}
+    )
+    assert resp.status_code == 403
+    assert "invalid discovery authorization token" in resp.json()["detail"].lower()
+
+
+def test_discovery_run_with_valid_token_accepted(client, monkeypatch):
+    """Calling POST /scamshield/discovery/run with valid token succeeds."""
+    monkeypatch.setenv("DISCOVERY_ACCESS_TOKEN", "test-secret-token")
+    monkeypatch.setattr(main_module, "DISCOVERY_ACCESS_TOKEN", "test-secret-token")
+    monkeypatch.setattr(
+        "app.services.pattern_discovery._embed_texts_fastembed",
+        lambda texts: np.zeros((len(texts), 384)),
+    )
+    resp = client.post(
+        "/scamshield/discovery/run",
+        json={"examples": [{"id": "ex_1", "message": "Claim prize now"}]},
+        headers={"X-Discovery-Token": "test-secret-token"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+
+
+def test_discovery_run_with_bearer_authorization_header(client, monkeypatch):
+    """Supports standard Authorization: Bearer <token> header format."""
+    monkeypatch.setenv("DISCOVERY_ACCESS_TOKEN", "test-bearer-token")
+    monkeypatch.setattr(main_module, "DISCOVERY_ACCESS_TOKEN", "test-bearer-token")
+    monkeypatch.setattr(
+        "app.services.pattern_discovery._embed_texts_fastembed",
+        lambda texts: np.zeros((len(texts), 384)),
+    )
+    resp = client.post(
+        "/scamshield/discovery/run",
+        json={"examples": [{"id": "ex_1", "message": "Claim prize now"}]},
+        headers={"Authorization": "Bearer test-bearer-token"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+
+
+def test_discovery_review_without_token_rejected_401(client, monkeypatch):
+    """Calling POST /scamshield/discovery/review without authorization header returns 401 when token configured."""
+    monkeypatch.setenv("DISCOVERY_ACCESS_TOKEN", "test-secret-token")
+    monkeypatch.setattr(main_module, "DISCOVERY_ACCESS_TOKEN", "test-secret-token")
+    resp = client.post("/scamshield/discovery/review", json={"pattern_id": "p1", "status": "benign"})
+    assert resp.status_code == 401
+
+
+def test_discovery_review_with_invalid_token_rejected_403(client, monkeypatch):
+    """Calling POST /scamshield/discovery/review with wrong token returns 403."""
+    monkeypatch.setenv("DISCOVERY_ACCESS_TOKEN", "test-secret-token")
+    monkeypatch.setattr(main_module, "DISCOVERY_ACCESS_TOKEN", "test-secret-token")
+    resp = client.post(
+        "/scamshield/discovery/review",
+        json={"pattern_id": "p1", "status": "benign"},
+        headers={"X-Discovery-Token": "wrong-token"}
+    )
+    assert resp.status_code == 403
+
+
+def test_discovery_endpoints_disabled_when_token_unconfigured(client, monkeypatch):
+    """When DISCOVERY_ACCESS_TOKEN is empty/unset, endpoints are safely disabled returning 403."""
+    monkeypatch.setenv("DISCOVERY_ACCESS_TOKEN", "")
+    monkeypatch.setattr(main_module, "DISCOVERY_ACCESS_TOKEN", "")
+    resp = client.post("/scamshield/discovery/run", json={"examples": [{"id": "1", "message": "test"}]})
+    assert resp.status_code == 403
+    assert "disabled because DISCOVERY_ACCESS_TOKEN is not configured" in resp.json()["detail"]
+
+    resp2 = client.post("/scamshield/discovery/review", json={"pattern_id": "p1", "status": "benign"})
+    assert resp2.status_code == 403
+    assert "disabled because DISCOVERY_ACCESS_TOKEN is not configured" in resp2.json()["detail"]
+
+
+def test_discovery_patterns_list_remains_unrestricted(client):
+    """GET /scamshield/discovery/patterns is a read-only endpoint that does not require discovery write token."""
+    resp = client.get("/scamshield/discovery/patterns")
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True

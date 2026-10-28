@@ -855,6 +855,14 @@ class TestDiscoveryAPIEndpoints:
         {"id": f"api_{i}", "message": f"Scam message example number {i}", "source": "TEST"}
         for i in range(15)
     ]
+    _TEST_TOKEN = "test-discovery-token-secret-xyz"
+    _AUTH_HEADERS = {"X-Discovery-Token": _TEST_TOKEN}
+
+    @pytest.fixture(autouse=True)
+    def _setup_discovery_auth(self, monkeypatch):
+        import app.main as main_mod
+        monkeypatch.setenv("DISCOVERY_ACCESS_TOKEN", self._TEST_TOKEN)
+        monkeypatch.setattr(main_mod, "DISCOVERY_ACCESS_TOKEN", self._TEST_TOKEN)
 
     def _patch_embeddings(self, monkeypatch):
         monkeypatch.setattr(
@@ -863,7 +871,7 @@ class TestDiscoveryAPIEndpoints:
         )
 
     def test_run_empty_examples_returns_422(self, client):
-        res = client.post("/scamshield/discovery/run", json={"examples": []})
+        res = client.post("/scamshield/discovery/run", json={"examples": []}, headers=self._AUTH_HEADERS)
         assert res.status_code == 422
 
     def test_run_returns_200_with_valid_examples(self, client, monkeypatch):
@@ -871,6 +879,7 @@ class TestDiscoveryAPIEndpoints:
         res = client.post(
             "/scamshield/discovery/run",
             json={"examples": self._SAMPLE_EXAMPLES},
+            headers=self._AUTH_HEADERS,
         )
         assert res.status_code == 200
         data = res.json()
@@ -884,6 +893,7 @@ class TestDiscoveryAPIEndpoints:
         res = client.post(
             "/scamshield/discovery/run",
             json={"examples": self._SAMPLE_EXAMPLES},
+            headers=self._AUTH_HEADERS,
         )
         data = res.json()
         assert isinstance(data["limitations"], list)
@@ -894,6 +904,7 @@ class TestDiscoveryAPIEndpoints:
         res = client.post(
             "/scamshield/discovery/run",
             json={"examples": self._SAMPLE_EXAMPLES},
+            headers=self._AUTH_HEADERS,
         )
         data = res.json()
         assert "disclaimer" in data
@@ -916,14 +927,14 @@ class TestDiscoveryAPIEndpoints:
         res = client.post("/scamshield/discovery/review", json={
             "pattern_id": "any_id",
             "status": "invalid_status",
-        })
+        }, headers=self._AUTH_HEADERS)
         assert res.status_code == 422
 
     def test_review_nonexistent_pattern_404(self, client):
         res = client.post("/scamshield/discovery/review", json={
             "pattern_id": "definitely_does_not_exist_xyz",
             "status": "known",
-        })
+        }, headers=self._AUTH_HEADERS)
         assert res.status_code == 404
 
     def test_run_then_review_round_trip(self, client, monkeypatch):
@@ -934,6 +945,7 @@ class TestDiscoveryAPIEndpoints:
         run_res = client.post(
             "/scamshield/discovery/run",
             json={"examples": self._SAMPLE_EXAMPLES},
+            headers=self._AUTH_HEADERS,
         )
         assert run_res.status_code == 200
 
@@ -948,7 +960,7 @@ class TestDiscoveryAPIEndpoints:
                 "status": "benign",
                 "reviewer": "test_runner",
                 "rationale": "Automated test decision.",
-            })
+            }, headers=self._AUTH_HEADERS)
             assert review_res.status_code == 200
             assert review_res.json()["success"] is True
             assert review_res.json()["new_status"] == "benign"
