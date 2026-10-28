@@ -486,3 +486,29 @@ def test_discovery_patterns_list_remains_unrestricted(client):
     resp = client.get("/scamshield/discovery/patterns")
     assert resp.status_code == 200
     assert resp.json()["success"] is True
+
+
+def test_rate_limiter_fixture_isolation_regression(client, monkeypatch):
+    """
+    Phase 1E Regression: Verify rate-limiter state isolation between tests.
+    Calling a rate-limited endpoint succeeds, and limiter.reset() cleanly clears
+    in-memory storage so that prior test requests cannot cause subsequent tests to fail.
+    """
+    monkeypatch.setenv("DISCOVERY_ACCESS_TOKEN", "reg-token")
+    monkeypatch.setattr(main_module, "DISCOVERY_ACCESS_TOKEN", "reg-token")
+    monkeypatch.setattr(
+        "app.services.pattern_discovery._embed_texts_fastembed",
+        lambda texts: np.zeros((len(texts), 384)),
+    )
+    headers = {"X-Discovery-Token": "reg-token"}
+    payload = {"examples": [{"id": "ex_reg", "message": "Claim free prize now"}]}
+
+    # Initial call succeeds
+    resp1 = client.post("/scamshield/discovery/run", json=payload, headers=headers)
+    assert resp1.status_code == 200
+
+    # Explicit reset clears storage and ensures next call succeeds with fresh bucket
+    main_module.limiter.reset()
+    resp2 = client.post("/scamshield/discovery/run", json=payload, headers=headers)
+    assert resp2.status_code == 200
+
