@@ -2661,4 +2661,164 @@ async def get_models_endpoint(privacy_mode: str = "hybrid"):
     return await get_active_model_registry(current_privacy_mode=privacy_mode)
 
 
+# ============================================================
+# PHASE 5: EMERGING PATTERN DISCOVERY ENDPOINTS
+# ============================================================
+# These endpoints are for BATCH RESEARCH USE ONLY.
+# They are intentionally separated from the real-time scam analysis
+# endpoints so that expensive clustering is NEVER triggered on
+# ordinary browser popup requests.
+# ============================================================
+
+from app.schemas import (
+    DiscoveryRunRequest,
+    DiscoveryRunResponse,
+    PatternListResponse,
+    PatternEntry,
+    PatternReviewRequest,
+)
+from fastapi import HTTPException as _HTTPException
+
+
+@app.post(
+    "/scamshield/discovery/run",
+    response_model=DiscoveryRunResponse,
+    summary="Run emerging-pattern discovery pipeline (batch research only)",
+    tags=["Phase 5 - Discovery"],
+)
+async def scamshield_discovery_run(request: DiscoveryRunRequest):
+    """
+    Phase 5: Run the emerging social-engineering pattern discovery pipeline.
+    For RESEARCH USE ONLY — not triggered on normal browser requests.
+    """
+    if not request.examples:
+        raise _HTTPException(status_code=422, detail="At least one example is required.")
+
+    try:
+        from app.services.pattern_discovery import ingest_dicts, run_discovery_pipeline
+        from app.services.pattern_registry import PatternRegistry
+        from pathlib import Path
+
+        examples = ingest_dicts(request.examples)
+        result = run_discovery_pipeline(
+            examples,
+            min_cluster_size=request.min_cluster_size,
+            novelty_threshold=request.novelty_threshold,
+            max_rows=request.max_rows,
+        )
+
+        result_dict = result.to_dict()
+        registry_path = Path(__file__).resolve().parents[1] / "data" / "pattern_registry.json"
+        registry = PatternRegistry(registry_path)
+        n_imported = registry.import_from_result(result_dict)
+        stats = registry.stats()
+
+        return DiscoveryRunResponse(
+            success=True,
+            n_ingested=result.n_ingested,
+            n_deduplicated=result.n_deduplicated,
+            n_clusters=len(result.clusters),
+            n_noise_points=len(result.noise_points),
+            n_high_novelty_candidates=len(result.high_novelty_noise),
+            embedding_model=result.embedding_model,
+            embedding_available=result.embedding_available,
+            algorithm_primary=result.algorithm_primary,
+            silhouette_primary=result.silhouette_primary,
+            silhouette_baseline=result.silhouette_baseline,
+            n_imported_to_registry=n_imported,
+            registry_total=stats["total_patterns"],
+            limitations=result.limitations,
+        )
+
+    except Exception as exc:
+        return DiscoveryRunResponse(success=False, limitations=[], error=str(exc))
+
+
+@app.get(
+    "/scamshield/discovery/patterns",
+    response_model=PatternListResponse,
+    summary="List candidate patterns in the human review registry",
+    tags=["Phase 5 - Discovery"],
+)
+async def scamshield_discovery_list_patterns(
+    status: str | None = None,
+    sort_by: str = "novelty_score",
+):
+    """
+    Phase 5: List candidate patterns in the pattern registry.
+    Optional ?status= filter: pending | known | potentially_novel | benign | inconclusive
+    """
+    try:
+        from app.services.pattern_registry import PatternRegistry
+        from pathlib import Path
+
+        registry_path = Path(__file__).resolve().parents[1] / "data" / "pattern_registry.json"
+        registry = PatternRegistry(registry_path)
+        raw_patterns = registry.list_patterns(status_filter=status, sort_by=sort_by)
+
+        entries = [
+            PatternEntry(
+                cluster_id=p["cluster_id"],
+                n_examples=p["n_examples"],
+                novelty_score=p["novelty_score"],
+                associated_tactics=p.get("associated_tactics", []),
+                tactic_confidence=p.get("tactic_confidence", ""),
+                review_status=p.get("review_status", "pending"),
+                medoid_message=p.get("medoid", {}).get("message", ""),
+                medoid_source=p.get("medoid", {}).get("source", ""),
+                shared_ngrams=p.get("shared_ngrams", []),
+                limitations=p.get("limitations", []),
+                import_timestamp=p.get("import_timestamp", ""),
+                source_provenance=p.get("source_provenance", []),
+            )
+            for p in raw_patterns
+        ]
+
+        return PatternListResponse(success=True, total=len(entries), status_filter=status, patterns=entries)
+
+    except Exception as exc:
+        raise _HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post(
+    "/scamshield/discovery/review",
+    summary="Record a human review decision for a discovered pattern",
+    tags=["Phase 5 - Discovery"],
+)
+async def scamshield_discovery_review(request: PatternReviewRequest):
+    """
+    Phase 5: Record a human review decision (no model training is triggered).
+    Valid statuses: pending | known | potentially_novel | benign | inconclusive
+    """
+    from app.services.pattern_registry import PatternRegistry, VALID_STATUSES
+    from pathlib import Path
+
+    if request.status not in VALID_STATUSES:
+        raise _HTTPException(
+            status_code=422,
+            detail=f"Invalid status. Must be one of: {sorted(VALID_STATUSES)}",
+        )
+
+    registry_path = Path(__file__).resolve().parents[1] / "data" / "pattern_registry.json"
+    registry = PatternRegistry(registry_path)
+
+    try:
+        updated = registry.review_pattern(
+            pattern_id=request.pattern_id,
+            status=request.status,
+            reviewer=request.reviewer,
+            rationale=request.rationale,
+        )
+        return {
+            "success": True,
+            "pattern_id": request.pattern_id,
+            "new_status": request.status,
+            "n_review_history": len(updated.get("review_history", [])),
+            "note": "Decision recorded. No model training is triggered by review decisions.",
+        }
+    except KeyError:
+        raise _HTTPException(status_code=404, detail=f"Pattern '{request.pattern_id}' not found.")
+
+
+
 

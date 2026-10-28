@@ -1,0 +1,317 @@
+{
+  "metadata": {
+    "dataset_path": "C:\\Users\\DELL\\Desktop\\ScamShield-AI\\data\\processed\\uci_sms_clean.csv",
+    "training_samples": 3642,
+    "test_samples": 1527,
+    "train_positive_spam": 488,
+    "test_positive_spam": 165,
+    "test_base_rate": 0.1081,
+    "random_seed": 42,
+    "leak_free_partition_guarantee": "0 duplicate groups cross partition"
+  },
+  "performance_metrics": {
+    "precision": 0.9059,
+    "recall": 0.9333,
+    "f1_score": 0.9194,
+    "roc_auc": 0.9888,
+    "confusion_matrix": {
+      "true_negative": 1346,
+      "false_positive": 16,
+      "false_negative": 11,
+      "true_positive": 154
+    }
+  },
+  "error_taxonomy": {
+    "INFORMAL_SLANG_OR_PHONETIC": 15,
+    "SUBTHRESHOLD_URGENCY": 11,
+    "COMMERCIAL_PROMOTION_VS_FRAUD": 1
+  },
+  "false_positive_count": 16,
+  "false_negative_count": 11,
+  "false_positives": [
+    {
+      "example_id": "566",
+      "message": "Waiting for your call.",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.8859,
+      "error_category": "SUBTHRESHOLD_URGENCY",
+      "detected_indicators": [
+        "call_to_action_imperative"
+      ],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "4417",
+      "message": "I (Career Tel) have added u as a contact on INDYAROCKS.COM to send FREE SMS. To remove from phonebook - sms NO to  &lt;#&gt;",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.7762,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [
+        "financial_reward_or_prize_hook",
+        "call_to_action_imperative"
+      ],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "1454",
+      "message": "Host-based IDPS for linux systems.",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.681,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "4199",
+      "message": "Miss call miss call khelate kintu opponenter miss call dhorte lage. Thats d rule. One with great phone receiving quality wins.",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.6711,
+      "error_category": "SUBTHRESHOLD_URGENCY",
+      "detected_indicators": [
+        "call_to_action_imperative"
+      ],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "1674",
+      "message": "As per your request 'Maangalyam (Alaipayuthe)' has been set as your callertune for all Callers. Press *9 to copy your friends Callertune",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.6515,
+      "error_category": "SUBTHRESHOLD_URGENCY",
+      "detected_indicators": [],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "8",
+      "message": "As per your request 'Melle Melle (Oru Minnaminunginte Nurungu Vettam)' has been set as your callertune for all Callers. Press *9 to copy your friends Callertune",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.6515,
+      "error_category": "SUBTHRESHOLD_URGENCY",
+      "detected_indicators": [],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "4741",
+      "message": "Sorry i missed your call. Can you please call back.",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.6204,
+      "error_category": "SUBTHRESHOLD_URGENCY",
+      "detected_indicators": [
+        "call_to_action_imperative"
+      ],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "4012",
+      "message": "U can call now...",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.6186,
+      "error_category": "SUBTHRESHOLD_URGENCY",
+      "detected_indicators": [
+        "call_to_action_imperative"
+      ],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "433",
+      "message": "Hi hope u get this txt~journey hasnt been gd,now about 50 mins late I think.",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.6178,
+      "error_category": "SUBTHRESHOLD_URGENCY",
+      "detected_indicators": [
+        "call_to_action_imperative"
+      ],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "2200",
+      "message": "Dont you have message offer",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.5822,
+      "error_category": "COMMERCIAL_PROMOTION_VS_FRAUD",
+      "detected_indicators": [],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "3985",
+      "message": "Send ur birthdate with month and year, I will tel u ur LIFE PARTNER'S name. and the method of calculation. Reply must.",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.5756,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [
+        "call_to_action_imperative"
+      ],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "1798",
+      "message": "Sir, i am waiting for your call.",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.575,
+      "error_category": "SUBTHRESHOLD_URGENCY",
+      "detected_indicators": [
+        "call_to_action_imperative"
+      ],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "2961",
+      "message": "Now am free call me pa.",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.5638,
+      "error_category": "SUBTHRESHOLD_URGENCY",
+      "detected_indicators": [
+        "financial_reward_or_prize_hook",
+        "call_to_action_imperative"
+      ],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "4248",
+      "message": "Urgh, coach hot, smells of chip fat! Thanks again, especially for the duvet (not a predictive text word).",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.5334,
+      "error_category": "SUBTHRESHOLD_URGENCY",
+      "detected_indicators": [
+        "call_to_action_imperative"
+      ],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "3338",
+      "message": "I'm at home. Please call",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.5319,
+      "error_category": "SUBTHRESHOLD_URGENCY",
+      "detected_indicators": [
+        "call_to_action_imperative"
+      ],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    },
+    {
+      "example_id": "4828",
+      "message": "Fuuuuck I need to stop sleepin, sup",
+      "ground_truth": "ham (0)",
+      "predicted_prob": 0.5071,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [],
+      "investigation_note": "Message exhibits surface features correlated with solicitation or urgency, but context indicates non-malicious intent."
+    }
+  ],
+  "false_negatives": [
+    {
+      "example_id": "2822",
+      "message": "Do you ever notice that when you're driving, anyone going slower than you is an idiot and everyone driving faster than you is a maniac?",
+      "ground_truth": "spam/scam (1)",
+      "predicted_prob": 0.0697,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [],
+      "investigation_note": "Model failed to detect scam pattern; linguistic disguise or low feature density."
+    },
+    {
+      "example_id": "3231",
+      "message": "LIFE has never been this much fun and great until you came in. You made it truly special for me. I won't forget you! enjoy @ one gbp/sms",
+      "ground_truth": "spam/scam (1)",
+      "predicted_prob": 0.1698,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [
+        "financial_reward_or_prize_hook"
+      ],
+      "investigation_note": "Model failed to detect scam pattern; linguistic disguise or low feature density."
+    },
+    {
+      "example_id": "3526",
+      "message": "2/2 146tf150p",
+      "ground_truth": "spam/scam (1)",
+      "predicted_prob": 0.1938,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [],
+      "investigation_note": "Model failed to detect scam pattern; linguistic disguise or low feature density."
+    },
+    {
+      "example_id": "3637",
+      "message": "Oh my god! I've found your number again! I'm so glad, text me back xafter this msgs cst std ntwk chg £1.50",
+      "ground_truth": "spam/scam (1)",
+      "predicted_prob": 0.2418,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [
+        "financial_reward_or_prize_hook",
+        "call_to_action_imperative"
+      ],
+      "investigation_note": "Model failed to detect scam pattern; linguistic disguise or low feature density."
+    },
+    {
+      "example_id": "1387",
+      "message": "For sale - arsenal dartboard. Good condition but no doubles or trebles!",
+      "ground_truth": "spam/scam (1)",
+      "predicted_prob": 0.2532,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [],
+      "investigation_note": "Model failed to detect scam pattern; linguistic disguise or low feature density."
+    },
+    {
+      "example_id": "2450",
+      "message": "This message is brought to you by GMW Ltd. and is not connected to the",
+      "ground_truth": "spam/scam (1)",
+      "predicted_prob": 0.3182,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [],
+      "investigation_note": "Model failed to detect scam pattern; linguistic disguise or low feature density."
+    },
+    {
+      "example_id": "2162",
+      "message": "Back 2 work 2morro half term over! Can U C me 2nite 4 some sexy passion B4 I have 2 go back? Chat NOW 09099726481 Luv DENA Calls £1/minMobsmoreLKPOBOX177HP51FL",
+      "ground_truth": "spam/scam (1)",
+      "predicted_prob": 0.3317,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [
+        "contains_phone_or_shortcode",
+        "financial_reward_or_prize_hook"
+      ],
+      "investigation_note": "Model failed to detect scam pattern; linguistic disguise or low feature density."
+    },
+    {
+      "example_id": "3773",
+      "message": "You will be receiving this week's Triple Echo ringtone shortly. Enjoy it!",
+      "ground_truth": "spam/scam (1)",
+      "predicted_prob": 0.3412,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [],
+      "investigation_note": "Model failed to detect scam pattern; linguistic disguise or low feature density."
+    },
+    {
+      "example_id": "6",
+      "message": "FreeMsg Hey there darling it's been 3 week's now and no word back! I'd like some fun you up for it still? Tb ok! XxX std chgs to send, £1.50 to rcv",
+      "ground_truth": "spam/scam (1)",
+      "predicted_prob": 0.3642,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [
+        "financial_reward_or_prize_hook"
+      ],
+      "investigation_note": "Model failed to detect scam pattern; linguistic disguise or low feature density."
+    },
+    {
+      "example_id": "1415",
+      "message": "CLAIRE here am havin borin time & am now alone U wanna cum over 2nite? Chat now 09099725823 hope 2 C U Luv CLAIRE xx Calls£1/minmoremobsEMSPOBox45PO139WA",
+      "ground_truth": "spam/scam (1)",
+      "predicted_prob": 0.4087,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [
+        "contains_phone_or_shortcode",
+        "financial_reward_or_prize_hook"
+      ],
+      "investigation_note": "Model failed to detect scam pattern; linguistic disguise or low feature density."
+    },
+    {
+      "example_id": "2643",
+      "message": "Burger King - Wanna play footy at a top stadium? Get 2 Burger King before 1st Sept and go Large or Super with Coca-Cola and walk out a winner",
+      "ground_truth": "spam/scam (1)",
+      "predicted_prob": 0.4246,
+      "error_category": "INFORMAL_SLANG_OR_PHONETIC",
+      "detected_indicators": [
+        "financial_reward_or_prize_hook"
+      ],
+      "investigation_note": "Model failed to detect scam pattern; linguistic disguise or low feature density."
+    }
+  ]
+}
