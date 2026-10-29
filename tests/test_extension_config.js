@@ -1,6 +1,6 @@
-/**
+﻿/**
  * Phase 1H Verification Test Suite: Extension Backend URL Centralization
- * 
+ *
  * Verifies:
  * 1. MentorConfig exports and default production URL (https://ai-browser-mentor.onrender.com).
  * 2. Valid localhost HTTP and HTTPS overrides with trailing slash sanitization.
@@ -311,4 +311,3 @@ test("8. Delayed initial URL resolution does not clobber storage-change override
     "Effective URL must be http://localhost:9000 and not overwritten by older delayed resolution"
   );
 });
-
