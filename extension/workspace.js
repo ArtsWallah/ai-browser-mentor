@@ -3,7 +3,23 @@
 // Phase 3: Dedicated Research Workspace View
 // ============================================================
 
-const BACKEND_URL = "http://127.0.0.1:8000";
+let BACKEND_URL = (typeof MentorConfig !== "undefined" && MentorConfig.DEFAULT_BACKEND_URL)
+    ? MentorConfig.DEFAULT_BACKEND_URL
+    : "https://ai-browser-mentor.onrender.com";
+
+// Dynamically react to storage override changes
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+        const key = (typeof MentorConfig !== "undefined" && MentorConfig.STORAGE_KEY)
+            ? MentorConfig.STORAGE_KEY
+            : "abm_backend_url_override";
+        if (areaName === "local" && changes && changes[key]) {
+            if (typeof MentorConfig !== "undefined" && typeof MentorConfig.sanitizeBackendUrl === "function") {
+                BACKEND_URL = MentorConfig.sanitizeBackendUrl(changes[key].newValue);
+            }
+        }
+    });
+}
 
 let currentWorkspace = null;
 let allWorkspaces = [];
@@ -43,6 +59,9 @@ const btnCopyAnswer = document.getElementById("btnCopyAnswer");
 
 // Init
 document.addEventListener("DOMContentLoaded", async () => {
+    if (typeof MentorConfig !== "undefined" && typeof MentorConfig.resolveBackendUrl === "function") {
+        BACKEND_URL = await MentorConfig.resolveBackendUrl();
+    }
     await loadWorkspaces();
     bindEvents();
 });
@@ -366,7 +385,7 @@ function renderErrorResult(msg) {
     resultAnswerText.textContent = msg;
     compareBreakdown.style.display = "none";
     citationsSection.style.display = "none";
-    resultLimitationsText.textContent = "Please check that the backend server is running on http://127.0.0.1:8000.";
+    resultLimitationsText.textContent = `Please check that the backend server is running on ${BACKEND_URL}.`;
 }
 
 function renderListItems(container, items, emptyMessage) {
