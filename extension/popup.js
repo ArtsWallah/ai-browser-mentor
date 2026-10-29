@@ -3,7 +3,24 @@
 // Phase 2: AI Command Center Orchestration
 // ============================================================
 
-const BACKEND_URL = "http://127.0.0.1:8000";
+let BACKEND_URL = (typeof MentorConfig !== "undefined" && MentorConfig.DEFAULT_BACKEND_URL)
+    ? MentorConfig.DEFAULT_BACKEND_URL
+    : "https://ai-browser-mentor.onrender.com";
+
+// Dynamically react to storage override changes
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+        const key = (typeof MentorConfig !== "undefined" && MentorConfig.STORAGE_KEY)
+            ? MentorConfig.STORAGE_KEY
+            : "abm_backend_url_override";
+        if (areaName === "local" && changes && changes[key]) {
+            if (typeof MentorConfig !== "undefined" && typeof MentorConfig.sanitizeBackendUrl === "function") {
+                BACKEND_URL = MentorConfig.sanitizeBackendUrl(changes[key].newValue);
+                checkBackendHealth();
+            }
+        }
+    });
+}
 
 // State
 let currentTab = null;
@@ -195,7 +212,7 @@ async function sendTabMessageWithRecovery(tabId, message, timeoutMs = 3500) {
         try {
             await chrome.scripting.executeScript({
                 target: { tabId: tabId },
-                files: ["content.js"]
+                files: ["config.js", "content.js"]
             });
             // Brief pause for script evaluation and listener registration
             await new Promise(r => setTimeout(r, 120));
@@ -238,6 +255,9 @@ function escapeHtml(str) {
 // ============================================================
 
 async function initialize() {
+    if (typeof MentorConfig !== "undefined" && typeof MentorConfig.resolveBackendUrl === "function") {
+        BACKEND_URL = await MentorConfig.resolveBackendUrl();
+    }
     await loadPrivacyMode();
     checkBackendHealth();
     await resolveActiveTab();
@@ -1701,7 +1721,7 @@ function renderWorkspaceError(msg) {
     wsResultAnswer.textContent = msg;
     wsCompareBreakdown.style.display = "none";
     wsCitationsContainer.style.display = "none";
-    wsLimitationsText.textContent = "Verify backend is running on http://127.0.0.1:8000.";
+    wsLimitationsText.textContent = `Verify backend is running on ${BACKEND_URL}.`;
 }
 
 function renderList(container, items, emptyMessage) {

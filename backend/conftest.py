@@ -1,4 +1,5 @@
 import sys
+import time
 from pathlib import Path
 import pytest
 
@@ -32,12 +33,36 @@ def isolate_rate_limiter_state():
 def preserve_pattern_registry():
     """
     Ensure pattern_registry.json on disk is preserved across tests that mutate it.
+    Avoids redundant writes when tests did not modify the registry.
     """
     registry_path = BACKEND_DIR / "data" / "pattern_registry.json"
-    content = None
+    original_content = None
     if registry_path.is_file():
-        content = registry_path.read_text(encoding="utf-8")
+        original_content = registry_path.read_text(encoding="utf-8")
+
     yield
-    if content is not None:
-        registry_path.write_text(content, encoding="utf-8")
+
+    if original_content is not None:
+        needs_restore = False
+        if not registry_path.is_file():
+            needs_restore = True
+        else:
+            try:
+                current_content = registry_path.read_text(encoding="utf-8")
+                needs_restore = (current_content != original_content)
+            except Exception:
+                needs_restore = True
+
+        if needs_restore:
+            registry_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                registry_path.write_text(original_content, encoding="utf-8")
+            except Exception as first_exc:
+                time.sleep(0.05)
+                try:
+                    registry_path.write_text(original_content, encoding="utf-8")
+                except Exception as second_exc:
+                    raise RuntimeError(
+                        f"Failed to restore pattern registry at {registry_path} after retry: {second_exc}"
+                    ) from first_exc
 

@@ -7,7 +7,60 @@
   }
   window.__AI_BROWSER_MENTOR_INJECTED__ = true;
 
-  const API_BASE_URL = "https://ai-browser-mentor.onrender.com";
+  let API_BASE_URL = (typeof MentorConfig !== "undefined" && MentorConfig.DEFAULT_BACKEND_URL)
+    ? MentorConfig.DEFAULT_BACKEND_URL
+    : "https://ai-browser-mentor.onrender.com";
+
+  let urlResolutionPromise = null;
+  let urlResolutionVersion = 0;
+
+  function initBackendUrl() {
+    if (typeof MentorConfig !== "undefined" && typeof MentorConfig.resolveBackendUrl === "function") {
+      const currentVersion = ++urlResolutionVersion;
+      urlResolutionPromise = MentorConfig.resolveBackendUrl()
+        .then(resolved => {
+          if (currentVersion === urlResolutionVersion && resolved) {
+            API_BASE_URL = resolved;
+          }
+          return API_BASE_URL;
+        })
+        .catch(err => {
+          console.warn("AI Browser Mentor: Failed to resolve backend URL:", err);
+          return API_BASE_URL;
+        });
+    }
+  }
+
+  async function getEffectiveApiBaseUrl() {
+    if (urlResolutionPromise) {
+      await urlResolutionPromise;
+    }
+    return API_BASE_URL;
+  }
+
+  // Expose for testability and cross-scope access
+  if (typeof globalThis !== "undefined") {
+    globalThis.getEffectiveApiBaseUrl = getEffectiveApiBaseUrl;
+  }
+
+  // Single initialization on script evaluation
+  initBackendUrl();
+
+  // Dynamically react to storage changes without clobbering by stale resolutions
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      const key = (typeof MentorConfig !== "undefined" && MentorConfig.STORAGE_KEY)
+        ? MentorConfig.STORAGE_KEY
+        : "abm_backend_url_override";
+      if (areaName === "local" && changes && changes[key]) {
+        if (typeof MentorConfig !== "undefined" && typeof MentorConfig.sanitizeBackendUrl === "function") {
+          urlResolutionVersion++; // Invalidate any pending resolveBackendUrl call
+          API_BASE_URL = MentorConfig.sanitizeBackendUrl(changes[key].newValue);
+          urlResolutionPromise = Promise.resolve(API_BASE_URL);
+        }
+      }
+    });
+  }
   const HOST_ID = "ai-browser-mentor-v3";
   const HOVER_ID = "ai-browser-mentor-hover-v3";
 
@@ -2078,8 +2131,8 @@ function enableHover() {
   payload
 ) {
 
- const url =
-    API_BASE_URL + path;
+  const baseUrl = await getEffectiveApiBaseUrl();
+  const url = baseUrl + path;
 
   // Debug logging is disabled by default and NEVER exposes payloads or user content
   if (DEBUG) {
