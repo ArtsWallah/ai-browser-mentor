@@ -7,6 +7,7 @@ import hmac
 import json
 import os
 import re
+import secrets
 import threading
 import uuid
 from typing import Any
@@ -2469,22 +2470,46 @@ async def hover_check(
 # DEBUG PAGE STORE (PROTECTED IN PRODUCTION)
 # ============================================================
 
-def _verify_debug_access(x_debug_token: str | None = None):
+def _verify_debug_access(
+    x_debug_token: str | None = Header(None, alias="X-Debug-Token"),
+    authorization: str | None = Header(None),
+):
     """
-    Guards internal debug inspection endpoints.
-    In production mode, access is strictly forbidden unless authorized via X-Debug-Token header.
+    Guards internal debug inspection endpoints across all environments.
+    Requires a valid DEBUG_ACCESS_TOKEN via 'X-Debug-Token' or 'Authorization: Bearer <token>'.
+    If DEBUG_ACCESS_TOKEN is not configured or blank, debug endpoints are safely disabled.
     """
-    if ENVIRONMENT == "production":
-        if not DEBUG_ACCESS_TOKEN or x_debug_token != DEBUG_ACCESS_TOKEN:
-            raise HTTPException(
-                status_code=403,
-                detail="Debug endpoints are disabled in production mode."
-            )
+    env_token = os.getenv("DEBUG_ACCESS_TOKEN")
+    configured_token = (env_token if env_token is not None else DEBUG_ACCESS_TOKEN).strip()
+    if not configured_token:
+        raise HTTPException(
+            status_code=403,
+            detail="Debug endpoints are disabled because DEBUG_ACCESS_TOKEN is not configured."
+        )
+
+    provided_token = x_debug_token
+    if not provided_token and authorization and authorization.startswith("Bearer "):
+        provided_token = authorization[7:].strip()
+
+    if not provided_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Debug authorization token required."
+        )
+
+    if not secrets.compare_digest(provided_token, configured_token):
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid debug authorization token."
+        )
 
 
 @app.get("/debug/pages")
-def debug_pages(x_debug_token: str | None = Header(None, alias="X-Debug-Token")):
-    _verify_debug_access(x_debug_token)
+def debug_pages(
+    x_debug_token: str | None = Header(None, alias="X-Debug-Token"),
+    authorization: str | None = Header(None),
+):
+    _verify_debug_access(x_debug_token, authorization)
     pages = []
     for page_id, page in page_store.items():
         pages.append({
@@ -2505,12 +2530,16 @@ def debug_pages(x_debug_token: str | None = Header(None, alias="X-Debug-Token"))
 
 
 # ============================================================
-# DEBUG SINGLE PAGE (PROTECTED IN PRODUCTION)
+# DEBUG SINGLE PAGE (PROTECTED IN ALL ENVIRONMENTS)
 # ============================================================
 
 @app.get("/debug/pages/{page_id}")
-def debug_page(page_id: str, x_debug_token: str | None = Header(None, alias="X-Debug-Token")):
-    _verify_debug_access(x_debug_token)
+def debug_page(
+    page_id: str,
+    x_debug_token: str | None = Header(None, alias="X-Debug-Token"),
+    authorization: str | None = Header(None),
+):
+    _verify_debug_access(x_debug_token, authorization)
     page = get_page(page_id)
     if not page:
         return {

@@ -44,61 +44,176 @@ def client():
 
 
 # ============================================================
-# 1. DEBUG ENDPOINT PROTECTION
+# 1. DEBUG ENDPOINT PROTECTION (FAIL-CLOSED IN ALL ENVIRONMENTS)
 # ============================================================
 
-def test_debug_pages_development_access(client):
-    """In development mode, debug endpoints are accessible."""
-    old_env = main_module.ENVIRONMENT
-    try:
-        main_module.ENVIRONMENT = "development"
-        resp = client.get("/debug/pages")
-        assert resp.status_code == 200
-        assert "pages" in resp.json()
-        assert "pageCount" in resp.json()
-    finally:
-        main_module.ENVIRONMENT = old_env
+def test_debug_pages_disabled_unconfigured_development(client, monkeypatch):
+    """Debug endpoints return 403 when DEBUG_ACCESS_TOKEN is unconfigured in development."""
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setattr(main_module, "ENVIRONMENT", "development")
+    monkeypatch.setenv("DEBUG_ACCESS_TOKEN", "")
+    monkeypatch.setattr(main_module, "DEBUG_ACCESS_TOKEN", "")
+
+    resp = client.get("/debug/pages")
+    assert resp.status_code == 403
+    assert "disabled because DEBUG_ACCESS_TOKEN is not configured" in resp.json().get("detail", "")
 
 
-def test_debug_pages_production_protection_forbidden(client):
-    """In production mode, debug endpoints are blocked with 403 Forbidden without token."""
-    old_env = main_module.ENVIRONMENT
-    old_token = main_module.DEBUG_ACCESS_TOKEN
-    try:
-        main_module.ENVIRONMENT = "production"
-        main_module.DEBUG_ACCESS_TOKEN = "super-secret-admin-token-12345"
+def test_debug_pages_disabled_unconfigured_production(client, monkeypatch):
+    """Debug endpoints return 403 when DEBUG_ACCESS_TOKEN is unconfigured in production."""
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setattr(main_module, "ENVIRONMENT", "production")
+    monkeypatch.setenv("DEBUG_ACCESS_TOKEN", "")
+    monkeypatch.setattr(main_module, "DEBUG_ACCESS_TOKEN", "")
 
-        # Missing token -> 403
-        resp_missing = client.get("/debug/pages")
-        assert resp_missing.status_code == 403
-        assert "disabled in production mode" in resp_missing.json().get("detail", "")
-
-        # Invalid token -> 403
-        resp_invalid = client.get("/debug/pages", headers={"X-Debug-Token": "wrong-token"})
-        assert resp_invalid.status_code == 403
-
-        # Single page missing token -> 403
-        resp_single = client.get("/debug/pages/any-page-id")
-        assert resp_single.status_code == 403
-    finally:
-        main_module.ENVIRONMENT = old_env
-        main_module.DEBUG_ACCESS_TOKEN = old_token
+    resp = client.get("/debug/pages")
+    assert resp.status_code == 403
+    assert "disabled because DEBUG_ACCESS_TOKEN is not configured" in resp.json().get("detail", "")
 
 
-def test_debug_pages_production_protection_authorized(client):
-    """In production mode, debug endpoints succeed when supplied with the valid X-Debug-Token."""
-    old_env = main_module.ENVIRONMENT
-    old_token = main_module.DEBUG_ACCESS_TOKEN
-    try:
-        main_module.ENVIRONMENT = "production"
-        main_module.DEBUG_ACCESS_TOKEN = "super-secret-admin-token-12345"
+def test_debug_pages_disabled_unconfigured_testing(client, monkeypatch):
+    """Debug endpoints return 403 when DEBUG_ACCESS_TOKEN is unconfigured in testing."""
+    monkeypatch.setenv("ENVIRONMENT", "testing")
+    monkeypatch.setattr(main_module, "ENVIRONMENT", "testing")
+    monkeypatch.setenv("DEBUG_ACCESS_TOKEN", "")
+    monkeypatch.setattr(main_module, "DEBUG_ACCESS_TOKEN", "")
 
-        resp = client.get("/debug/pages", headers={"X-Debug-Token": "super-secret-admin-token-12345"})
+    resp = client.get("/debug/pages")
+    assert resp.status_code == 403
+    assert "disabled because DEBUG_ACCESS_TOKEN is not configured" in resp.json().get("detail", "")
+
+
+def test_debug_pages_missing_request_token_returns_401(client, monkeypatch):
+    """When token is configured, requests lacking credentials return HTTP 401."""
+    monkeypatch.setenv("DEBUG_ACCESS_TOKEN", "super-secret-admin-token-12345")
+    monkeypatch.setattr(main_module, "DEBUG_ACCESS_TOKEN", "super-secret-admin-token-12345")
+
+    resp = client.get("/debug/pages")
+    assert resp.status_code == 401
+    assert "Debug authorization token required" in resp.json().get("detail", "")
+
+
+def test_debug_pages_incorrect_token_returns_403(client, monkeypatch):
+    """Supplying an incorrect token returns HTTP 403."""
+    monkeypatch.setenv("DEBUG_ACCESS_TOKEN", "super-secret-admin-token-12345")
+    monkeypatch.setattr(main_module, "DEBUG_ACCESS_TOKEN", "super-secret-admin-token-12345")
+
+    resp = client.get("/debug/pages", headers={"X-Debug-Token": "wrong-token"})
+    assert resp.status_code == 403
+    assert "Invalid debug authorization token" in resp.json().get("detail", "")
+
+
+def test_debug_pages_correct_x_debug_token_returns_200(client, monkeypatch):
+    """Supplying correct X-Debug-Token returns HTTP 200."""
+    monkeypatch.setenv("DEBUG_ACCESS_TOKEN", "super-secret-admin-token-12345")
+    monkeypatch.setattr(main_module, "DEBUG_ACCESS_TOKEN", "super-secret-admin-token-12345")
+
+    resp = client.get("/debug/pages", headers={"X-Debug-Token": "super-secret-admin-token-12345"})
+    assert resp.status_code == 200
+    assert resp.json().get("success") is True
+    assert "pages" in resp.json()
+
+
+def test_debug_pages_correct_bearer_token_returns_200(client, monkeypatch):
+    """Supplying correct Bearer token returns HTTP 200."""
+    monkeypatch.setenv("DEBUG_ACCESS_TOKEN", "super-secret-admin-token-12345")
+    monkeypatch.setattr(main_module, "DEBUG_ACCESS_TOKEN", "super-secret-admin-token-12345")
+
+    resp = client.get("/debug/pages", headers={"Authorization": "Bearer super-secret-admin-token-12345"})
+    assert resp.status_code == 200
+    assert resp.json().get("success") is True
+    assert "pages" in resp.json()
+
+
+def test_debug_pages_valid_auth_in_dev_and_prod(client, monkeypatch):
+    """Valid authentication works consistently in both development and production."""
+    token = "env-agnostic-secret-token-777"
+    monkeypatch.setenv("DEBUG_ACCESS_TOKEN", token)
+    monkeypatch.setattr(main_module, "DEBUG_ACCESS_TOKEN", token)
+
+    for env in ["development", "production"]:
+        monkeypatch.setenv("ENVIRONMENT", env)
+        monkeypatch.setattr(main_module, "ENVIRONMENT", env)
+
+        resp = client.get("/debug/pages", headers={"X-Debug-Token": token})
         assert resp.status_code == 200
         assert resp.json().get("success") is True
+
+
+def test_debug_single_page_rejects_unauthorized_requests(client, monkeypatch):
+    """Single-page debug endpoint rejects unconfigured, missing, and invalid tokens."""
+    # 1. Unconfigured -> 403
+    monkeypatch.setenv("DEBUG_ACCESS_TOKEN", "")
+    monkeypatch.setattr(main_module, "DEBUG_ACCESS_TOKEN", "")
+    resp_unconf = client.get("/debug/pages/test-page-id")
+    assert resp_unconf.status_code == 403
+
+    # 2. Configured but missing token -> 401
+    monkeypatch.setenv("DEBUG_ACCESS_TOKEN", "valid-token-123")
+    monkeypatch.setattr(main_module, "DEBUG_ACCESS_TOKEN", "valid-token-123")
+    resp_missing = client.get("/debug/pages/test-page-id")
+    assert resp_missing.status_code == 401
+
+    # 3. Configured with wrong token -> 403
+    resp_wrong = client.get("/debug/pages/test-page-id", headers={"X-Debug-Token": "bad-token"})
+    assert resp_wrong.status_code == 403
+
+    # 4. Valid token -> 200
+    resp_ok = client.get("/debug/pages/test-page-id", headers={"X-Debug-Token": "valid-token-123"})
+    assert resp_ok.status_code == 200
+
+
+def test_debug_rejected_responses_do_not_expose_page_data(client, monkeypatch):
+    """Rejected responses never leak stored page titles, URLs, IDs, or contents."""
+    secret_page_id = "canary-secret-id-998877"
+    secret_url = "https://internal-bank.example.corp/confidential-balance"
+    secret_content = "Super sensitive financial ledger data 12345"
+
+    main_module.page_store[secret_page_id] = {
+        "page_id": secret_page_id,
+        "title": "Confidential Ledger",
+        "url": secret_url,
+        "content": secret_content,
+        "chunks": [{"text": secret_content}],
+        "paragraphs": [secret_content],
+        "links": [],
+        "images": [],
+        "interactiveElements": [],
+    }
+
+    try:
+        # Case A: Token unconfigured
+        monkeypatch.setenv("DEBUG_ACCESS_TOKEN", "")
+        monkeypatch.setattr(main_module, "DEBUG_ACCESS_TOKEN", "")
+
+        resp_list = client.get("/debug/pages")
+        assert resp_list.status_code == 403
+        assert secret_page_id not in resp_list.text
+        assert secret_url not in resp_list.text
+        assert secret_content not in resp_list.text
+
+        resp_single = client.get(f"/debug/pages/{secret_page_id}")
+        assert resp_single.status_code == 403
+        assert secret_page_id not in resp_single.text
+        assert secret_url not in resp_single.text
+        assert secret_content not in resp_single.text
+
+        # Case B: Token configured, but missing or invalid
+        monkeypatch.setenv("DEBUG_ACCESS_TOKEN", "legit-debug-token")
+        monkeypatch.setattr(main_module, "DEBUG_ACCESS_TOKEN", "legit-debug-token")
+
+        resp_missing = client.get("/debug/pages")
+        assert resp_missing.status_code == 401
+        assert secret_page_id not in resp_missing.text
+
+        resp_invalid = client.get(f"/debug/pages/{secret_page_id}", headers={"X-Debug-Token": "wrong-token"})
+        assert resp_invalid.status_code == 403
+        assert secret_page_id not in resp_invalid.text
+        assert secret_url not in resp_invalid.text
+        assert secret_content not in resp_invalid.text
+
     finally:
-        main_module.ENVIRONMENT = old_env
-        main_module.DEBUG_ACCESS_TOKEN = old_token
+        main_module.page_store._data.pop(secret_page_id, None)
 
 
 # ============================================================
