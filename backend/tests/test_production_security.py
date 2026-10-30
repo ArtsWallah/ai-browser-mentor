@@ -28,6 +28,7 @@ from app.main import (
     RequestSizeLimitMiddleware,
     build_allowed_origins,
     parse_and_validate_extension_ids,
+    resolve_allow_localhost,
     resolve_allow_origin_regex,
 )
 from app.services.vector_store import (
@@ -439,6 +440,108 @@ def test_cors_production_never_enables_extension_regex():
     assert resolve_allow_origin_regex("true", "development") == r"^chrome-extension://[a-z]{32}$"
     assert resolve_allow_origin_regex("false", "development") is None
     assert resolve_allow_origin_regex(None, "development") is None
+
+
+def test_cors_resolve_allow_localhost_defaults_and_overrides():
+    """
+    Test resolve_allow_localhost logic:
+    - Default False in production.
+    - Default True in development/testing.
+    - Explicit true/false overrides respected in all environments.
+    - None, empty strings, and whitespace treated as unset.
+    """
+    # Defaults
+    assert resolve_allow_localhost(None, "production") is False
+    assert resolve_allow_localhost(None, "development") is True
+    assert resolve_allow_localhost(None, "testing") is True
+
+    # Empty and whitespace treated as unset
+    assert resolve_allow_localhost("", "production") is False
+    assert resolve_allow_localhost("   ", "production") is False
+    assert resolve_allow_localhost("", "development") is True
+    assert resolve_allow_localhost("   ", "development") is True
+    assert resolve_allow_localhost("", "testing") is True
+
+    # Explicit string overrides
+    assert resolve_allow_localhost("true", "production") is True
+    assert resolve_allow_localhost("TRUE", "production") is True
+    assert resolve_allow_localhost("1", "production") is True
+    assert resolve_allow_localhost("yes", "production") is True
+
+    assert resolve_allow_localhost("false", "development") is False
+    assert resolve_allow_localhost("0", "development") is False
+    assert resolve_allow_localhost("no", "development") is False
+    assert resolve_allow_localhost("random_str", "development") is False
+
+    # Explicit boolean overrides
+    assert resolve_allow_localhost(True, "production") is True
+    assert resolve_allow_localhost(False, "production") is False
+    assert resolve_allow_localhost(True, "development") is True
+    assert resolve_allow_localhost(False, "development") is False
+
+
+def test_cors_production_origin_excludes_localhost_by_default():
+    """In production mode with unset ALLOW_LOCALHOST, build_allowed_origins excludes localhost."""
+    ext_id = "abcdefghijklmnopqrstuvwxyzabcdef"
+    allowed_localhost = resolve_allow_localhost(None, "production")
+    origins = build_allowed_origins(extension_id_raw=ext_id, allow_localhost=allowed_localhost)
+
+    # Localhost origins must NOT be present
+    for host in ["http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "http://127.0.0.1:5173"]:
+        assert host not in origins
+
+    # Explicit Chrome extension origin must remain present
+    assert f"chrome-extension://{ext_id}" in origins
+
+
+def test_cors_production_preflight_denies_localhost_by_default():
+    """
+    In production mode, preflight requests from localhost origins are denied,
+    while explicitly configured Chrome extension origins succeed.
+    """
+    ext_id = "abcdefghijklmnopqrstuvwxyzabcdef"
+    allowed_localhost = resolve_allow_localhost(None, "production")
+    origins = build_allowed_origins(extension_id_raw=ext_id, allow_localhost=allowed_localhost)
+    default_fallback = []
+
+    prod_app = FastAPI()
+    prod_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins if origins else default_fallback,
+        allow_origin_regex=None,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
+
+    @prod_app.post("/test-cors")
+    def _endpoint():
+        return {"ok": True}
+
+    prod_client = TestClient(prod_app)
+
+    # Preflight from localhost origin must be denied
+    resp_localhost = prod_client.options(
+        "/test-cors",
+        headers={
+            "Origin": "http://localhost:8000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Content-Type",
+        }
+    )
+    assert resp_localhost.headers.get("access-control-allow-origin") is None
+
+    # Preflight from configured Chrome extension must be granted
+    resp_ext = prod_client.options(
+        "/test-cors",
+        headers={
+            "Origin": f"chrome-extension://{ext_id}",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Content-Type",
+        }
+    )
+    assert resp_ext.status_code in (200, 204)
+    assert resp_ext.headers.get("access-control-allow-origin") == f"chrome-extension://{ext_id}"
 
 
 def test_cors_disallowed_origin(client):

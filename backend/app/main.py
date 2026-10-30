@@ -206,6 +206,22 @@ def build_allowed_origins(
     return list(dict.fromkeys(origins))
 
 
+def resolve_allow_localhost(allow_localhost_env: str | bool | None, environment: str) -> bool:
+    """
+    Determine whether localhost origins should be permitted in CORS.
+    Defaults to True in development and testing; defaults to False in production.
+    Respects explicit true/false overrides. Treats None, empty, and whitespace as unset.
+    """
+    if allow_localhost_env is None:
+        return environment.lower() != "production"
+    if isinstance(allow_localhost_env, bool):
+        return allow_localhost_env
+    val = str(allow_localhost_env).strip().lower()
+    if not val:
+        return environment.lower() != "production"
+    return val in ("true", "1", "yes")
+
+
 def resolve_allow_origin_regex(allow_regex_env: str | bool | None, environment: str) -> str | None:
     """
     Determine if arbitrary extension regex is allowed.
@@ -227,7 +243,7 @@ def resolve_allow_origin_regex(allow_regex_env: str | bool | None, environment: 
 ALLOWED_ORIGINS_RAW = os.getenv("ALLOWED_ORIGINS", "").strip()
 EXTENSION_ID = os.getenv("EXTENSION_ID", "").strip()
 ALLOWED_EXTENSION_IDS_RAW = os.getenv("ALLOWED_EXTENSION_IDS", "").strip()
-ALLOW_LOCALHOST = os.getenv("ALLOW_LOCALHOST", "true").lower() in ("true", "1", "yes")
+ALLOW_LOCALHOST = resolve_allow_localhost(os.getenv("ALLOW_LOCALHOST"), ENVIRONMENT)
 # Unrestricted extension regex matching is strictly disabled by default.
 ALLOW_EXTENSION_REGEX = os.getenv("ALLOW_EXTENSION_REGEX", "false").lower() in ("true", "1", "yes")
 
@@ -242,9 +258,11 @@ allow_origin_regex = resolve_allow_origin_regex(ALLOW_EXTENSION_REGEX, ENVIRONME
 has_wildcard = "*" in allowed_origins or not allowed_origins
 allow_credentials = False if has_wildcard else True
 
+default_origins = [] if ENVIRONMENT == "production" else ["http://localhost:8000", "http://127.0.0.1:8000"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins if allowed_origins else ["http://localhost:8000", "http://127.0.0.1:8000"],
+    allow_origins=allowed_origins if allowed_origins else default_origins,
     allow_origin_regex=allow_origin_regex,
     allow_credentials=allow_credentials,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
