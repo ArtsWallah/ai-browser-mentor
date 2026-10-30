@@ -3,7 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from app.scamshield_service import load_model, resolve_model_path
+from app.scamshield_service import (
+    get_scamshield_status,
+    is_scamshield_available,
+    load_model,
+    resolve_model_path,
+)
 from app.services.candidate_ranker import MultiSignalCandidateRanker
 from app.services.model_integrity import (
     ModelIntegrityError,
@@ -12,6 +17,9 @@ from app.services.model_integrity import (
     update_integrity_manifest,
     verify_model_artifact,
 )
+from app.services.security_service import analyze_security_text
+from fastapi.testclient import TestClient
+from app.main import app
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 MODELS_DIR = BACKEND_DIR / "data" / "models"
@@ -216,3 +224,124 @@ def test_readme_references_dataset_attribution():
     assert "José María Gómez Hidalgo" in content
     assert "ATTRIBUTION.md" in content
     assert "CC BY 4.0" in content
+
+
+def test_scamshield_readiness_valid_registered_artifact():
+    """Readiness probe returns True and ready status when valid artifact is configured."""
+    assert is_scamshield_available() is True
+    available, msg = get_scamshield_status()
+    assert available is True
+    assert "Ready" in msg
+
+
+def test_scamshield_readiness_missing_artifact(tmp_path, monkeypatch):
+    """Readiness probe returns False when artifact file does not exist."""
+    missing_file = tmp_path / "nonexistent.joblib"
+    monkeypatch.setenv("SCAMSHIELD_MODEL_PATH", str(missing_file))
+
+    assert is_scamshield_available() is False
+    available, msg = get_scamshield_status()
+    assert available is False
+    assert "not found" in msg.lower() or "missing" in msg.lower()
+    # Path should not leak in status message
+    assert str(missing_file) not in msg
+
+
+def test_scamshield_readiness_integrity_verification_failure(tmp_path, monkeypatch):
+    """Readiness probe returns False when artifact fails SHA-256 integrity verification."""
+    corrupted_file = tmp_path / "tfidf_multilabel_baseline.joblib"
+    corrupted_file.write_bytes(b"tampered content that fails sha256")
+    monkeypatch.setenv("SCAMSHIELD_MODEL_PATH", str(corrupted_file))
+
+    assert is_scamshield_available() is False
+    available, msg = get_scamshield_status()
+    assert available is False
+    assert "integrity" in msg.lower() or "checksum" in msg.lower()
+    # Path should not leak in status message
+    assert str(corrupted_file) not in msg
+
+
+def test_health_and_models_endpoints_reflect_readiness(tmp_path, monkeypatch):
+    """GET /health and GET /models/status report unavailable when model is corrupted."""
+    client = TestClient(app)
+
+    # 1. Normal state: healthy and configured
+    health_ok = client.get("/health")
+    assert health_ok.status_code == 200
+    assert health_ok.json()["scamshield_configured"] is True
+
+    models_ok = client.get("/models")
+    assert models_ok.status_code == 200
+    scamshield_model = next(m for m in models_ok.json()["models"] if m["id"] == "local-scamshield-classifier")
+    assert scamshield_model["is_available"] is True
+    assert scamshield_model["is_configured"] is True
+
+    # 2. Corrupted state: reports unavailable
+    corrupted_file = tmp_path / "tfidf_multilabel_baseline.joblib"
+    corrupted_file.write_bytes(b"corrupted binary payload")
+    monkeypatch.setenv("SCAMSHIELD_MODEL_PATH", str(corrupted_file))
+
+    health_bad = client.get("/health")
+    assert health_bad.status_code == 200
+    assert health_bad.json()["scamshield_configured"] is False
+
+    models_bad = client.get("/models/status")
+    assert models_bad.status_code == 200
+    scamshield_bad = next(m for m in models_bad.json()["models"] if m["id"] == "local-scamshield-classifier")
+    assert scamshield_bad["is_available"] is False
+    assert scamshield_bad["is_configured"] is False
+    assert "integrity" in scamshield_bad["status_message"].lower() or "checksum" in scamshield_bad["status_message"].lower()
+    # Must not leak filesystem paths
+    assert str(corrupted_file) not in scamshield_bad["status_message"]
+
+
+def test_heuristic_fallback_operates_when_model_unavailable(tmp_path, monkeypatch):
+    """analyze_security_text gracefully falls back to heuristic checks without errors when model is corrupt."""
+    corrupted_file = tmp_path / "tfidf_multilabel_baseline.joblib"
+    corrupted_file.write_bytes(b"corrupted payload")
+    monkeypatch.setenv("SCAMSHIELD_MODEL_PATH", str(corrupted_file))
+
+    res = analyze_security_text("URGENT: Your account has been suspended! Enter password immediately to verify.")
+    assert res["success"] is True
+    assert res["risk_score"] > 0
+    assert "reasons" in res
+    assert res["scamshield"]["available"] is False
+    assert "fallback" in res["scamshield"]["disclaimer"].lower() or "unavailable" in res["scamshield"]["disclaimer"].lower()
+
+
+def test_readiness_probe_does_not_deserialize_model():
+    """is_scamshield_available() and get_scamshield_status() do NOT trigger joblib.load()."""
+    load_model.cache_clear()
+    assert load_model.cache_info().currsize == 0
+
+    # Probe availability
+    available = is_scamshield_available()
+    assert available is True
+    _, msg = get_scamshield_status()
+    assert "Ready" in msg
+
+    # Cache should still be empty! Probing must not deserialize the model
+    assert load_model.cache_info().currsize == 0
+
+
+def test_heuristic_fallback_operates_when_scamshield_service_import_fails(monkeypatch):
+    """security_service operates in fallback mode if scamshield_service raises ImportError."""
+    import importlib
+    import sys
+    import app.services.security_service as sec
+
+    # Simulate missing scamshield_service / ImportError
+    monkeypatch.setitem(sys.modules, "app.scamshield_service", None)
+    reloaded_sec = importlib.reload(sec)
+
+    try:
+        assert reloaded_sec.is_scamshield_available() is False
+        res = reloaded_sec.analyze_security_text("URGENT: action required immediately. Enter your password.")
+        assert res["success"] is True
+        assert res["risk_score"] > 0
+        assert res["scamshield"]["available"] is False
+        assert "fallback" in res["scamshield"]["disclaimer"].lower() or "unavailable" in res["scamshield"]["disclaimer"].lower()
+    finally:
+        # Restore original module state
+        monkeypatch.undo()
+        importlib.reload(sec)

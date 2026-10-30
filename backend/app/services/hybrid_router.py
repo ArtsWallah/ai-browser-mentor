@@ -105,16 +105,21 @@ async def get_active_model_registry(current_privacy_mode: str = PRIVACY_HYBRID) 
     ))
 
     # 2. Local ScamShield Tactic Classifier
-    from app.services.security_service import SCAMSHIELD_AVAILABLE
+    try:
+        from app.scamshield_service import get_scamshield_status
+        scamshield_up, scamshield_msg = get_scamshield_status()
+    except Exception:
+        scamshield_up = False
+        scamshield_msg = "Disabled: Model service unavailable or unconfigured"
     models.append(ModelCapabilityInfo(
         id="local-scamshield-classifier",
         name="ScamShield AI Tactic Classifier (Scikit-Learn Ensemble)",
         provider="local_scamshield",
         is_local=True,
         supported_tasks=["analyze_selected_text", "scam_classification"],
-        is_configured=SCAMSHIELD_AVAILABLE,
-        is_available=SCAMSHIELD_AVAILABLE,
-        status_message="Ready (local ML models for fraud tactic detection)" if SCAMSHIELD_AVAILABLE else "Model file missing or unconfigured.",
+        is_configured=scamshield_up,
+        is_available=scamshield_up,
+        status_message=scamshield_msg,
         max_context_chars=15000,
         privacy_level="local_only"
     ))

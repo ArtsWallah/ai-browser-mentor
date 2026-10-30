@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 from functools import lru_cache
@@ -10,6 +11,8 @@ from dotenv import load_dotenv
 # Explicitly load the backend .env, regardless of the working directory.
 BACKEND_ENV = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(BACKEND_ENV, override=False)
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_model_path(model_path: str | Path | None = None) -> Path:
@@ -33,6 +36,56 @@ def resolve_model_path(model_path: str | Path | None = None) -> Path:
         return candidate_cwd
 
     return candidate
+
+
+
+def is_scamshield_available() -> bool:
+    """
+    Check if the ScamShield model artifact is configured, exists on disk,
+    and passes SHA-256 integrity verification against the trusted manifest.
+
+    Guarantees:
+    - Never calls joblib.load() or deserializes model weights.
+    - Preserves lazy model loading.
+    - Directly verifies artifact presence and checksum on disk every time,
+      preventing stale readiness after an artifact is removed or changed.
+    """
+    available, _ = get_scamshield_status()
+    return available
+
+
+def get_scamshield_status() -> tuple[bool, str]:
+    """
+    Check ScamShield model availability and return a sanitized status tuple:
+    (is_available: bool, status_message: str).
+
+    Guarantees:
+    - Does not expose sensitive filesystem paths, secrets, or exception details.
+    - Validates SHA-256 integrity before declaring ready.
+    """
+    model_path = os.getenv("SCAMSHIELD_MODEL_PATH")
+    if not model_path:
+        return False, "Model unconfigured: SCAMSHIELD_MODEL_PATH is not set."
+
+    try:
+        path = resolve_model_path(model_path)
+    except Exception as exc:
+        logger.debug("ScamShield path resolution failed: %s", exc)
+        return False, "Model file is missing or unconfigured."
+
+    if not path.is_file():
+        return False, "Model file is missing or not found on disk."
+
+    try:
+        from app.services.model_integrity import verify_model_artifact, ModelIntegrityError
+        verify_model_artifact(path)
+        return True, "Ready (local ML models for fraud tactic detection)"
+    except ModelIntegrityError as exc:
+        logger.warning("ScamShield model integrity verification failed: %s", exc)
+        return False, "Model integrity verification failed: artifact does not match trusted checksum."
+    except Exception as exc:
+        logger.warning("ScamShield model readiness probe failed: %s", exc)
+        return False, "Model is unavailable or failed validation."
 
 
 @lru_cache(maxsize=1)

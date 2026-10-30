@@ -3,11 +3,19 @@ from typing import Any
 from app.services.link_service import analyze_single_link, analyze_link_batch
 
 try:
-    from app.scamshield_service import analyze_message
-    SCAMSHIELD_AVAILABLE = True
+    from app.scamshield_service import (
+        analyze_message,
+        is_scamshield_available,
+        get_scamshield_status,
+    )
 except Exception:
     analyze_message = None
-    SCAMSHIELD_AVAILABLE = False
+
+    def is_scamshield_available() -> bool:
+        return False
+
+    def get_scamshield_status() -> tuple[bool, str]:
+        return False, "Disabled: Model service unavailable or dependencies missing"
 
 
 # Security indicator patterns (phishing, social engineering, coercion)
@@ -241,7 +249,7 @@ def analyze_security_text(
     # 1. ScamShield ML analysis
     scamshield_data = None
     scamshield_tactics = []
-    if SCAMSHIELD_AVAILABLE and analyze_message:
+    if is_scamshield_available() and analyze_message:
         try:
             raw_scamshield = analyze_message(clean_text[:10000])
             if isinstance(raw_scamshield, dict):

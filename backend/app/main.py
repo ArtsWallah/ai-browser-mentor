@@ -851,13 +851,13 @@ def root():
 
 @app.get("/health")
 def health():
-    from app.services.security_service import SCAMSHIELD_AVAILABLE
+    from app.services.security_service import is_scamshield_available
 
     return {
         "success": True,
         "status": "healthy",
         "groq_configured": bool(GROQ_API_KEY),
-        "scamshield_configured": SCAMSHIELD_AVAILABLE,
+        "scamshield_configured": is_scamshield_available(),
         "model": GROQ_MODEL,
         "pages": len(page_store),
         "capabilities": [
