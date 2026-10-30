@@ -1,14 +1,21 @@
-﻿/**
- * Phase 1H Verification Test Suite: Extension Backend URL Centralization
+/**
+ * Phase 1H & Phase 1I Verification Test Suite: Extension Backend URL Centralization & Permission Hardening
  *
  * Verifies:
  * 1. MentorConfig exports and default production URL (https://ai-browser-mentor.onrender.com).
  * 2. Valid localhost HTTP and HTTPS overrides with trailing slash sanitization.
  * 3. Insecure remote HTTP and malformed override rejection with fallback to production default.
  * 4. Safe chrome.storage.local resolution with error handling.
- * 5. Extension manifest content_scripts ordering (config.js before content.js).
+ * 5. Extension manifest permission hardening:
+ *    - tabs permission is removed.
+ *    - permissions contains only storage, scripting, activeTab.
+ *    - host_permissions contains only approved backend origins.
+ *    - optional_host_permissions declared for custom backend HTTPS.
+ *    - content_scripts ordering and matches remain intact.
  * 6. Extension HTML script tag ordering (config.js before popup.js and workspace.js).
  * 7. Extension recovery injection ordering and active URL interpolation in error messages.
+ * 8. Delayed initial URL resolution does not clobber storage-change override in content.js.
+ * 9. Custom backend permission validation, request handling, and resolution guards.
  */
 
 const test = require("node:test");
@@ -158,7 +165,7 @@ test("4. chrome.storage.local resolution with fallback and mock environments", a
   }
 });
 
-test("5. Manifest.json structure and content_scripts ordering", () => {
+test("5. Manifest.json permission hardening and content_scripts ordering", () => {
   const manifestRaw = fs.readFileSync(manifestPath, "utf-8");
   const manifest = JSON.parse(manifestRaw);
 
@@ -169,16 +176,43 @@ test("5. Manifest.json structure and content_scripts ordering", () => {
   const cs = manifest.content_scripts[0];
   assert.deepStrictEqual(cs.js, ["config.js", "content.js"], "config.js must precede content.js in manifest content_scripts");
 
-  // Ensure permissions were not broadened
+  // Content script matches must remain unchanged
+  assert.deepStrictEqual(
+    cs.matches,
+    ["http://*/*", "https://*/*"],
+    "Content script matches must remain http://*/* and https://*/*"
+  );
+
+  // Broad tabs permission must be removed
+  assert.strictEqual(
+    manifest.permissions.includes("tabs"),
+    false,
+    "The broad 'tabs' permission must be removed from manifest.json"
+  );
+
+  // Exact minimal permissions
   assert.deepStrictEqual(
     manifest.permissions,
-    ["storage", "tabs", "scripting", "activeTab"],
-    "Permissions must match expected set exactly"
+    ["storage", "scripting", "activeTab"],
+    "Permissions must match hardened minimal set exactly"
   );
+
+  // Host permissions restricted to approved backend origins
   assert.deepStrictEqual(
     manifest.host_permissions,
-    ["http://*/*", "https://*/*"],
-    "Host permissions must match expected set exactly"
+    [
+      "https://ai-browser-mentor.onrender.com/*",
+      "http://localhost/*",
+      "http://127.0.0.1/*"
+    ],
+    "Host permissions must match approved backend origins exactly"
+  );
+
+  // Optional host permissions declared for user-configured custom backends
+  assert.deepStrictEqual(
+    manifest.optional_host_permissions,
+    ["https://*/*"],
+    "Optional host permissions must support HTTPS patterns for custom backends"
   );
 });
 
@@ -255,7 +289,11 @@ test("8. Delayed initial URL resolution does not clobber storage-change override
     console: { warn: () => {}, log: () => {}, error: () => {} },
     setTimeout: setTimeout,
     clearTimeout: clearTimeout,
-    setInterval: setInterval,
+    setInterval: (fn, ms) => {
+      const timer = setInterval(fn, ms);
+      if (timer && typeof timer.unref === "function") timer.unref();
+      return timer;
+    },
     clearInterval: clearInterval,
     URL: URL,
     addEventListener: () => {},
@@ -309,5 +347,282 @@ test("8. Delayed initial URL resolution does not clobber storage-change override
     effectiveUrl,
     "http://localhost:9000",
     "Effective URL must be http://localhost:9000 and not overwritten by older delayed resolution"
+  );
+});
+
+test("9. Custom backend permission validation, request handling, and resolution guards", async () => {
+  const originalChrome = global.chrome;
+
+  try {
+    // 9a. Default origin checks matching static manifest host_permissions exactly
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("https://ai-browser-mentor.onrender.com"),
+      true,
+      "Official production domain must be recognized as default origin"
+    );
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("http://localhost"),
+      true,
+      "Localhost HTTP without port must be recognized as default origin"
+    );
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("http://localhost:8000"),
+      true,
+      "Localhost HTTP with port must be recognized as default origin"
+    );
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("http://localhost:3000/api"),
+      true,
+      "Localhost HTTP with path must be recognized as default origin"
+    );
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("http://127.0.0.1"),
+      true,
+      "127.0.0.1 HTTP without port must be recognized as default origin"
+    );
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("http://127.0.0.1:8000"),
+      true,
+      "127.0.0.1 HTTP with port must be recognized as default origin"
+    );
+
+    // Explicit non-defaults: HTTPS localhost, IPv6 [::1], and .localhost subdomains
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("https://localhost"),
+      false,
+      "HTTPS localhost is not covered by static host_permissions"
+    );
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("https://localhost:8000"),
+      false,
+      "HTTPS localhost with port is not covered by static host_permissions"
+    );
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("https://127.0.0.1"),
+      false,
+      "HTTPS 127.0.0.1 is not covered by static host_permissions"
+    );
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("https://127.0.0.1:8000"),
+      false,
+      "HTTPS 127.0.0.1 with port is not covered by static host_permissions"
+    );
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("http://[::1]"),
+      false,
+      "IPv6 http://[::1] is not covered by static host_permissions"
+    );
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("http://[::1]:8000"),
+      false,
+      "IPv6 http://[::1]:8000 is not covered by static host_permissions"
+    );
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("http://app.localhost:8080"),
+      false,
+      "Subdomain .localhost is not covered by static host_permissions"
+    );
+    assert.strictEqual(
+      MentorConfig.isDefaultBackendOrigin("https://custom-cloud.example.com"),
+      false,
+      "Remote custom domain must not be recognized as default origin"
+    );
+
+    // 9b. Origin pattern generation (Chrome match-pattern rules: no port numbers, no wildcards)
+    assert.strictEqual(
+      MentorConfig.getBackendOriginPattern("https://custom.example.com:8443/api/v1"),
+      "https://custom.example.com/*",
+      "Origin pattern must strip ports and paths to create valid Chrome match pattern"
+    );
+    assert.strictEqual(
+      MentorConfig.getBackendOriginPattern("https://custom.example.com/deep/path/"),
+      "https://custom.example.com/*",
+      "Origin pattern must normalize paths to /*"
+    );
+    assert.strictEqual(
+      MentorConfig.getBackendOriginPattern("https://custom.example.com:443/api?key=value#frag"),
+      "https://custom.example.com/*",
+      "Origin pattern must strip ports, query strings, and fragments"
+    );
+    assert.strictEqual(
+      MentorConfig.getBackendOriginPattern("http://remote.example.com"),
+      null,
+      "HTTP remote origins must return null (only HTTPS allowed for custom host patterns)"
+    );
+    assert.strictEqual(
+      MentorConfig.getBackendOriginPattern("https://*"),
+      null,
+      "Wildcard host https://* must be rejected to prevent accidental broad grant"
+    );
+    assert.strictEqual(
+      MentorConfig.getBackendOriginPattern("https://*/*"),
+      null,
+      "Wildcard host https://*/* must be rejected"
+    );
+    assert.strictEqual(
+      MentorConfig.getBackendOriginPattern("https://*.example.com"),
+      null,
+      "Subdomain wildcard must be rejected"
+    );
+    assert.strictEqual(
+      MentorConfig.getBackendOriginPattern("invalid-url"),
+      null,
+      "Malformed URL must return null"
+    );
+    assert.strictEqual(
+      MentorConfig.getBackendOriginPattern(""),
+      null,
+      "Empty URL must return null"
+    );
+    assert.strictEqual(
+      MentorConfig.getBackendOriginPattern(null),
+      null,
+      "Null URL must return null"
+    );
+
+    // 9c. Fail closed when Chrome permissions API is unavailable
+    delete global.chrome;
+    const hasPermWithoutApi = await MentorConfig.hasBackendPermission("https://custom.example.com");
+    assert.strictEqual(
+      hasPermWithoutApi,
+      false,
+      "hasBackendPermission must fail closed (return false) when chrome.permissions is unavailable"
+    );
+    const reqPermWithoutApi = await MentorConfig.requestBackendPermission("https://custom.example.com");
+    assert.strictEqual(
+      reqPermWithoutApi.success,
+      false,
+      "requestBackendPermission must fail closed when chrome.permissions is unavailable"
+    );
+    assert.strictEqual(
+      reqPermWithoutApi.url,
+      MentorConfig.DEFAULT_BACKEND_URL
+    );
+
+    // But default origins and localhost always succeed without permissions API
+    const hasDefaultPerm = await MentorConfig.hasBackendPermission("https://ai-browser-mentor.onrender.com");
+    assert.strictEqual(hasDefaultPerm, true, "Default origin has static permission");
+    const hasLocalhostPerm = await MentorConfig.hasBackendPermission("http://localhost:8000");
+    assert.strictEqual(hasLocalhostPerm, true, "Localhost HTTP has static permission");
+    const hasIpPerm = await MentorConfig.hasBackendPermission("http://127.0.0.1:8000");
+    assert.strictEqual(hasIpPerm, true, "127.0.0.1 HTTP has static permission");
+
+    // 9d. Explicit Chrome permissions mock
+    let promptCalled = false;
+    global.chrome = {
+      permissions: {
+        contains: (opts, cb) => cb(false),
+        request: (opts, cb) => {
+          promptCalled = true;
+          cb(true);
+        }
+      }
+    };
+
+    // Default origins never trigger prompt
+    const resDefault = await MentorConfig.requestBackendPermission("https://ai-browser-mentor.onrender.com");
+    assert.strictEqual(resDefault.success, true);
+    assert.strictEqual(promptCalled, false, "Default origin must never prompt for optional permissions");
+
+    const resLocal = await MentorConfig.requestBackendPermission("http://localhost:8000");
+    assert.strictEqual(resLocal.success, true);
+    assert.strictEqual(promptCalled, false, "Localhost origin must never prompt for optional permissions");
+
+    // 9e. Insecure remote HTTP backend is rejected without prompt
+    const resInsecure = await MentorConfig.requestBackendPermission("http://insecure-remote.example.com");
+    assert.strictEqual(resInsecure.success, false);
+    assert.strictEqual(promptCalled, false, "Insecure remote HTTP must be rejected without prompt");
+    assert.ok(resInsecure.reason.includes("HTTPS"), "Rejection reason must mention HTTPS requirement");
+
+    // 9f. Custom HTTPS backend prompts for permission synchronously without prior contains() check
+    let requestInvokedSynchronously = false;
+    let containsCalled = false;
+    global.chrome.permissions.contains = (opts, cb) => {
+      containsCalled = true;
+      cb(false);
+    };
+    global.chrome.permissions.request = (opts, cb) => {
+      requestInvokedSynchronously = true;
+      cb(true);
+    };
+
+    const reqPromise = MentorConfig.requestBackendPermission("https://custom-model-server.org:8443/api");
+
+    // Assert synchronously before awaiting promise resolution
+    assert.strictEqual(
+      requestInvokedSynchronously,
+      true,
+      "chrome.permissions.request must be invoked synchronously within the call stack to preserve user gesture"
+    );
+    assert.strictEqual(
+      containsCalled,
+      false,
+      "requestBackendPermission must not invoke contains() prior to requesting permission"
+    );
+
+    const resGranted = await reqPromise;
+    assert.strictEqual(resGranted.success, true);
+    assert.strictEqual(resGranted.url, "https://custom-model-server.org:8443/api");
+
+    // 9g. Custom HTTPS backend handles user denial gracefully
+    global.chrome.permissions.request = (opts, cb) => cb(false);
+    const resDenied = await MentorConfig.requestBackendPermission("https://untrusted-host.example.com");
+    assert.strictEqual(resDenied.success, false);
+    assert.strictEqual(resDenied.url, MentorConfig.DEFAULT_BACKEND_URL);
+    assert.ok(resDenied.reason.includes("denied"), "Failure reason must state that permission was denied");
+
+    // 9h. resolveBackendUrl falls back to default if custom remote origin lacks permission
+    global.chrome.permissions.contains = (opts, cb) => cb(false);
+    global.chrome.storage = {
+      local: {
+        get: (keys, cb) => cb({ abm_backend_url_override: "https://unapproved-backend.com" })
+      }
+    };
+    const resolvedDenied = await MentorConfig.resolveBackendUrl();
+    assert.strictEqual(
+      resolvedDenied,
+      MentorConfig.DEFAULT_BACKEND_URL,
+      "resolveBackendUrl must fall back to default when stored remote URL lacks host permission"
+    );
+
+    // 9i. resolveBackendUrl succeeds if custom remote origin has permission
+    global.chrome.permissions.contains = (opts, cb) => cb(true);
+    const resolvedApproved = await MentorConfig.resolveBackendUrl();
+    assert.strictEqual(
+      resolvedApproved,
+      "https://unapproved-backend.com",
+      "resolveBackendUrl must return custom URL when host permission is present"
+    );
+  } finally {
+    global.chrome = originalChrome;
+  }
+});
+
+test("10. Inline backend configuration UI structure and absence of window.prompt", () => {
+  const popupHtml = fs.readFileSync(popupHtmlPath, "utf-8");
+  const popupJs = fs.readFileSync(popupJsPath, "utf-8");
+
+  // Verify inline configuration section and controls in popup.html
+  assert.ok(popupHtml.includes('id="backendConfigSection"'), "popup.html must include backendConfigSection");
+  assert.ok(popupHtml.includes('id="backendUrlInput"'), "popup.html must include backendUrlInput");
+  assert.ok(popupHtml.includes('id="btnGrantSaveBackend"'), "popup.html must include btnGrantSaveBackend");
+  assert.ok(popupHtml.includes('id="btnResetBackend"'), "popup.html must include btnResetBackend");
+  assert.ok(popupHtml.includes('id="backendConfigStatus"'), "popup.html must include backendConfigStatus");
+
+  // Verify absence of window.prompt in popup.js
+  assert.strictEqual(
+    popupJs.includes("window.prompt"),
+    false,
+    "popup.js must not contain any window.prompt calls"
+  );
+
+  // Verify direct synchronous permission request inside btnGrantSaveBackend listener
+  assert.ok(
+    popupJs.includes("btnGrantSaveBackend.addEventListener"),
+    "popup.js must attach event listener directly to btnGrantSaveBackend"
+  );
+  assert.ok(
+    popupJs.includes("chrome.permissions.request({ origins: [pattern] }"),
+    "popup.js must invoke chrome.permissions.request directly inside the button click listener"
   );
 });

@@ -32,11 +32,103 @@ let isExecutingCommand = false;
 let allScannedLinks = [];
 let currentLinkFilter = "all";
 let currentPrivacyMode = "hybrid";
+const MAX_INGEST_PAYLOAD_BYTES = Math.floor(1.8 * 1024 * 1024); // 1.8 MB safety margin (backend limit: 2 MB)
+let lastReadPageError = "";
+
+function measureUtf8Bytes(str) {
+    if (typeof TextEncoder !== "undefined") {
+        return new TextEncoder().encode(str).length;
+    }
+    return unescape(encodeURIComponent(str)).length;
+}
+
+function trimIngestPayload(payload, maxBytes = MAX_INGEST_PAYLOAD_BYTES) {
+    if (!payload || typeof payload !== "object") return null;
+
+    let serialized = JSON.stringify(payload);
+    if (measureUtf8Bytes(serialized) <= maxBytes) {
+        return payload;
+    }
+
+    // Clone payload for progressive reduction
+    const trimmed = {
+        ...payload,
+        headings: [...(payload.headings || [])],
+        paragraphs: [...(payload.paragraphs || [])],
+        chunks: [...(payload.chunks || [])],
+        links: [...(payload.links || [])],
+        images: [...(payload.images || [])],
+        interactiveElements: [...(payload.interactiveElements || [])]
+    };
+
+    // Stage 1: Trim non-essential arrays and truncate redundant full content
+    if (trimmed.links.length > 80) trimmed.links = trimmed.links.slice(0, 80);
+    if (trimmed.images.length > 25) trimmed.images = trimmed.images.slice(0, 25);
+    if (trimmed.interactiveElements.length > 50) trimmed.interactiveElements = trimmed.interactiveElements.slice(0, 50);
+    if (typeof trimmed.content === "string" && trimmed.content.length > 100000) {
+        trimmed.content = trimmed.content.slice(0, 100000);
+    }
+
+    serialized = JSON.stringify(trimmed);
+    if (measureUtf8Bytes(serialized) <= maxBytes) {
+        return trimmed;
+    }
+
+    // Stage 2: Tighter limits on metadata, chunk counts, and content
+    if (trimmed.links.length > 40) trimmed.links = trimmed.links.slice(0, 40);
+    if (trimmed.images.length > 10) trimmed.images = trimmed.images.slice(0, 10);
+    if (trimmed.interactiveElements.length > 25) {
+        const passElements = trimmed.interactiveElements.filter(el => (el.type || "").toLowerCase() === "password");
+        const otherElements = trimmed.interactiveElements.filter(el => (el.type || "").toLowerCase() !== "password");
+        trimmed.interactiveElements = [...passElements, ...otherElements].slice(0, 25);
+    }
+    if (typeof trimmed.content === "string" && trimmed.content.length > 50000) {
+        trimmed.content = trimmed.content.slice(0, 50000);
+    }
+    if (trimmed.chunks.length > 80) {
+        trimmed.chunks = trimmed.chunks.slice(0, 80);
+    }
+
+    serialized = JSON.stringify(trimmed);
+    if (measureUtf8Bytes(serialized) <= maxBytes) {
+        return trimmed;
+    }
+
+    // Stage 3: Aggressive reduction for extreme web documents
+    trimmed.images = [];
+    trimmed.links = trimmed.links.slice(0, 20);
+    const passOnly = trimmed.interactiveElements.filter(el => (el.type || "").toLowerCase() === "password");
+    trimmed.interactiveElements = passOnly.length > 0 ? passOnly : trimmed.interactiveElements.slice(0, 10);
+    if (typeof trimmed.content === "string") {
+        trimmed.content = trimmed.content.slice(0, 20000);
+    }
+    if (trimmed.chunks.length > 40) {
+        trimmed.chunks = trimmed.chunks.slice(0, 40);
+    }
+    trimmed.chunks = trimmed.chunks.map(c => ({
+        ...c,
+        text: typeof c.text === "string" && c.text.length > 2000 ? c.text.slice(0, 2000) : c.text
+    }));
+
+    serialized = JSON.stringify(trimmed);
+    if (measureUtf8Bytes(serialized) <= maxBytes) {
+        return trimmed;
+    }
+
+    return null;
+}
 
 // DOM Elements: Header & Status
+const connectionPill = document.getElementById("connectionPill");
 const connectionDot = document.getElementById("connectionDot");
 const connectionText = document.getElementById("connectionText");
 const privacyModeSelect = document.getElementById("privacyModeSelect");
+const backendConfigSection = document.getElementById("backendConfigSection");
+const backendUrlInput = document.getElementById("backendUrlInput");
+const btnGrantSaveBackend = document.getElementById("btnGrantSaveBackend");
+const btnResetBackend = document.getElementById("btnResetBackend");
+const btnCloseBackendConfig = document.getElementById("btnCloseBackendConfig");
+const backendConfigStatus = document.getElementById("backendConfigStatus");
 const modelStatusNotice = document.getElementById("modelStatusNotice");
 const activeProviderBadge = document.getElementById("activeProviderBadge");
 const activePageTitle = document.getElementById("activePageTitle");
@@ -148,6 +240,20 @@ function clearAlert() {
     globalAlert.textContent = "";
 }
 
+function showBackendStatus(message, type = "info") {
+    if (!backendConfigStatus) return;
+    backendConfigStatus.textContent = message;
+    if (type === "error") {
+        backendConfigStatus.style.color = "var(--danger)";
+    } else if (type === "success") {
+        backendConfigStatus.style.color = "var(--success)";
+    } else if (type === "warning") {
+        backendConfigStatus.style.color = "var(--warning)";
+    } else {
+        backendConfigStatus.style.color = "var(--muted)";
+    }
+}
+
 function switchTab(targetPanelId) {
     navTabs.forEach(tab => {
         const isActive = tab.getAttribute("data-tab") === targetPanelId;
@@ -257,6 +363,32 @@ function escapeHtml(str) {
 async function initialize() {
     if (typeof MentorConfig !== "undefined" && typeof MentorConfig.resolveBackendUrl === "function") {
         BACKEND_URL = await MentorConfig.resolveBackendUrl();
+        if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+            try {
+                chrome.storage.local.get([MentorConfig.STORAGE_KEY], (items) => {
+                    const storedUrl = items ? items[MentorConfig.STORAGE_KEY] : null;
+                    if (
+                        storedUrl &&
+                        storedUrl !== MentorConfig.DEFAULT_BACKEND_URL &&
+                        BACKEND_URL === MentorConfig.DEFAULT_BACKEND_URL
+                    ) {
+                        showAlert(
+                            `Stored custom backend (${storedUrl}) lacks host permission. Falling back to default backend.`,
+                            "warning"
+                        );
+                        showBackendStatus(
+                            `Stored custom backend (${storedUrl}) lacks host permission. Fell back to default.`,
+                            "warning"
+                        );
+                    }
+                });
+            } catch (e) {
+                console.warn("Storage check for fallback warning:", e);
+            }
+        }
+    }
+    if (backendUrlInput) {
+        backendUrlInput.value = BACKEND_URL || (typeof MentorConfig !== "undefined" ? MentorConfig.DEFAULT_BACKEND_URL : "https://ai-browser-mentor.onrender.com");
     }
     await loadPrivacyMode();
     checkBackendHealth();
@@ -440,15 +572,17 @@ async function detectUserSelection() {
 // ============================================================
 
 async function readCurrentPage() {
-    if (!currentTab?.id || isReadingPage) return;
+    if (!currentTab?.id || isReadingPage) return false;
 
     const tabUrl = currentTab.url || "";
     if (isRestrictedUrl(tabUrl)) {
-        showAlert("Cannot read internal browser or Chrome Web Store pages. Please open an ordinary webpage.", "error");
-        return;
+        lastReadPageError = "Cannot read internal browser or Chrome Web Store pages. Please open an ordinary webpage.";
+        showAlert(lastReadPageError, "error");
+        return false;
     }
 
     clearAlert();
+    lastReadPageError = "";
     isReadingPage = true;
     btnReadPage.disabled = true;
     readPageSpinner.style.display = "inline-block";
@@ -461,16 +595,14 @@ async function readCurrentPage() {
             throw new Error(pageData?.error || "Could not extract page text.");
         }
 
-        currentPageData = pageData;
         const pageId = `page_${Date.now()}`;
-        currentPageId = pageId;
 
         // Transmit structured document to backend
-        const ingestPayload = {
+        const rawPayload = {
             page_id: pageId,
             title: pageData.title || currentTab.title || "Webpage",
             url: pageData.url || currentTab.url || "",
-            hostname: activePageDomain.textContent || "",
+            hostname: activePageDomain?.textContent || "",
             description: pageData.description || "",
             headings: (pageData.chunks || []).map(c => c.heading).filter(Boolean),
             paragraphs: [],
@@ -482,19 +614,43 @@ async function readCurrentPage() {
             wordCount: pageData.stats?.characters ? Math.round(pageData.stats.characters / 5) : 0
         };
 
+        // Enforce safety margin (1.8 MB UTF-8 bytes) with progressive trimming
+        const ingestPayload = trimIngestPayload(rawPayload, MAX_INGEST_PAYLOAD_BYTES);
+        if (!ingestPayload) {
+            throw new Error("Webpage content exceeds maximum allowed size (1.8 MB). Please select a specific section of text to analyze.");
+        }
+
+        const serializedBody = JSON.stringify(ingestPayload);
+        const payloadBytes = measureUtf8Bytes(serializedBody);
+
+        if (payloadBytes > MAX_INGEST_PAYLOAD_BYTES) {
+            throw new Error("Webpage content exceeds maximum allowed size (1.8 MB). Please select a specific section of text to analyze.");
+        }
+
         const res = await fetch(`${BACKEND_URL}/page/ingest`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(ingestPayload)
+            body: serializedBody
         });
 
         if (!res.ok) {
-            throw new Error(`Backend ingest failed (${res.status})`);
+            const errJson = await res.json().catch(() => null);
+            let errMsg = "";
+            if (res.status === 413) {
+                errMsg = errJson?.error || errJson?.detail || "Webpage content exceeds maximum allowed body size (2 MB). Try selecting a specific section of text.";
+            } else {
+                errMsg = errJson?.detail || errJson?.error || `Backend ingest failed (${res.status})`;
+            }
+            throw new Error(errMsg);
         }
 
         const ingestRes = await res.json().catch(() => ({}));
 
-        const chunksCount = (pageData.chunks || []).length;
+        // Assign page ID only AFTER verified successful ingestion
+        currentPageId = pageId;
+        currentPageData = pageData;
+
+        const chunksCount = (ingestPayload.chunks || []).length;
         if (pageStatusBadge) {
             if (ingestRes.page_state === "loading") {
                 pageStatusBadge.textContent = "Loading State";
@@ -524,10 +680,15 @@ async function readCurrentPage() {
             setTimeout(clearAlert, 2500);
         }
 
+        return true;
+
     } catch (err) {
         console.error("Read page error:", err);
-        showAlert(err.message || "Failed to read webpage.", "error");
+        currentPageId = "";
+        lastReadPageError = err.message || "Failed to read webpage.";
+        showAlert(lastReadPageError, "error");
         readPageText.textContent = "Retry Read";
+        return false;
     } finally {
         isReadingPage = false;
         btnReadPage.disabled = false;
@@ -622,10 +783,10 @@ async function executeCommand(overrideInstruction = "", intentOverride = "auto")
         // If page has not been ingested yet and we are on an accessible tab, ingest first
         if (!currentPageId && currentTab?.id && !isRestrictedUrl(currentTab.url)) {
             showCommandLoading("Reading active webpage for context...");
-            try {
-                await readCurrentPage();
-            } catch (ingestErr) {
-                console.warn("Auto-read page warning:", ingestErr);
+            const ingestSuccess = await readCurrentPage();
+            if (!ingestSuccess || !currentPageId) {
+                showCommandError(lastReadPageError || "Could not read active webpage context. Command stopped to prevent using unindexed or invalid page context.");
+                return;
             }
         }
 
@@ -1167,6 +1328,155 @@ async function checkCustomUrl() {
 // ============================================================
 
 function setupEventListeners() {
+    // Backend Server URL Configuration Section Toggle
+    if (connectionPill) {
+        connectionPill.style.cursor = "pointer";
+        connectionPill.title = "Click to configure backend server URL";
+        connectionPill.addEventListener("click", () => {
+            if (!backendConfigSection) return;
+            const isHidden = backendConfigSection.style.display === "none";
+            backendConfigSection.style.display = isHidden ? "block" : "none";
+            if (isHidden) {
+                if (backendUrlInput) {
+                    backendUrlInput.value = BACKEND_URL || (typeof MentorConfig !== "undefined" ? MentorConfig.DEFAULT_BACKEND_URL : "https://ai-browser-mentor.onrender.com");
+                    backendUrlInput.focus();
+                }
+                showBackendStatus("", "info");
+            }
+        });
+    }
+
+    if (btnCloseBackendConfig) {
+        btnCloseBackendConfig.addEventListener("click", () => {
+            if (backendConfigSection) {
+                backendConfigSection.style.display = "none";
+            }
+        });
+    }
+
+    // Direct synchronous click handler on "Grant & Save"
+    if (btnGrantSaveBackend) {
+        btnGrantSaveBackend.addEventListener("click", () => {
+            const rawVal = (backendUrlInput?.value || "").trim();
+            if (!rawVal) {
+                showBackendStatus("Please enter a backend URL, or click 'Reset to Default'.", "warning");
+                return;
+            }
+
+            const defaultBackend = typeof MentorConfig !== "undefined"
+                ? MentorConfig.DEFAULT_BACKEND_URL
+                : "https://ai-browser-mentor.onrender.com";
+
+            const storageKey = typeof MentorConfig !== "undefined"
+                ? MentorConfig.STORAGE_KEY
+                : "abm_backend_url_override";
+
+            const sanitized = typeof MentorConfig !== "undefined" && typeof MentorConfig.sanitizeBackendUrl === "function"
+                ? MentorConfig.sanitizeBackendUrl(rawVal)
+                : rawVal.trim().replace(/\/+$/, "");
+
+            let parsed = null;
+            try {
+                parsed = new URL(rawVal);
+            } catch {
+                showBackendStatus("Malformed URL. Please enter a valid URL.", "error");
+                return;
+            }
+
+            const isDefault = typeof MentorConfig !== "undefined" && typeof MentorConfig.isDefaultBackendOrigin === "function"
+                ? MentorConfig.isDefaultBackendOrigin(rawVal)
+                : (rawVal.startsWith("https://ai-browser-mentor.onrender.com") || rawVal.startsWith("http://localhost") || rawVal.startsWith("http://127.0.0.1"));
+
+            if (parsed.protocol === "http:" && !isDefault) {
+                showBackendStatus("Insecure remote HTTP is not permitted. Custom backends must use HTTPS or run on localhost/127.0.0.1.", "error");
+                return;
+            }
+
+            if (sanitized === defaultBackend && !rawVal.includes("ai-browser-mentor.onrender.com")) {
+                showBackendStatus("Invalid backend URL. Query parameters, hashes, and credentials are not allowed.", "error");
+                return;
+            }
+
+            // Statically approved origin (default Render or localhost HTTP): no Chrome permission prompt required
+            if (isDefault) {
+                if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+                    chrome.storage.local.set({ [storageKey]: sanitized }, () => {
+                        showBackendStatus(`Saved: ${sanitized}`, "success");
+                        showAlert(`Backend URL set to ${sanitized}`, "info");
+                    });
+                }
+                return;
+            }
+
+            // Custom remote HTTPS backend: derive exact match pattern
+            const pattern = typeof MentorConfig !== "undefined" && typeof MentorConfig.getBackendOriginPattern === "function"
+                ? MentorConfig.getBackendOriginPattern(sanitized)
+                : (parsed.protocol === "https:" && parsed.hostname && !parsed.hostname.includes("*") ? `https://${parsed.hostname}/*` : null);
+
+            if (!pattern) {
+                showBackendStatus("Invalid custom backend URL. Must be a valid HTTPS domain without wildcards.", "error");
+                return;
+            }
+
+            if (typeof chrome === "undefined" || !chrome.permissions || typeof chrome.permissions.request !== "function") {
+                showBackendStatus("Chrome permissions API is unavailable. Cannot grant host permission.", "error");
+                return;
+            }
+
+            // SYNCHRONOUSLY call chrome.permissions.request() within the click event handler
+            // Before ANY await or async operation, preserving Chrome user activation
+            showBackendStatus("Requesting permission from browser...", "info");
+            try {
+                chrome.permissions.request({ origins: [pattern] }, (granted) => {
+                    if (chrome.runtime && chrome.runtime.lastError) {
+                        showBackendStatus(`Permission request failed: ${chrome.runtime.lastError.message}`, "error");
+                        showAlert(`Permission error: ${chrome.runtime.lastError.message}`, "error");
+                        return;
+                    }
+
+                    if (!granted) {
+                        showBackendStatus(`Permission denied for ${pattern}. URL was not saved.`, "error");
+                        showAlert(`Permission denied for ${pattern}. URL was not saved.`, "warning");
+                        return;
+                    }
+
+                    // Save backend URL only after permission is confirmed
+                    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+                        chrome.storage.local.set({ [storageKey]: sanitized }, () => {
+                            showBackendStatus(`Permission granted! Saved: ${sanitized}`, "success");
+                            showAlert(`Backend URL set to ${sanitized}`, "info");
+                        });
+                    }
+                });
+            } catch (err) {
+                showBackendStatus(`Permission error: ${err.message || err}`, "error");
+            }
+        });
+    }
+
+    // Reset to Default button handler
+    if (btnResetBackend) {
+        btnResetBackend.addEventListener("click", () => {
+            const defaultBackend = typeof MentorConfig !== "undefined"
+                ? MentorConfig.DEFAULT_BACKEND_URL
+                : "https://ai-browser-mentor.onrender.com";
+
+            const storageKey = typeof MentorConfig !== "undefined"
+                ? MentorConfig.STORAGE_KEY
+                : "abm_backend_url_override";
+
+            if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+                chrome.storage.local.remove(storageKey, () => {
+                    if (backendUrlInput) {
+                        backendUrlInput.value = defaultBackend;
+                    }
+                    showBackendStatus("Reset to default production server.", "info");
+                    showAlert("Backend URL reset to default", "info");
+                });
+            }
+        });
+    }
+
     // Privacy Mode Selector
     privacyModeSelect?.addEventListener("change", (e) => {
         savePrivacyMode(e.target.value);
@@ -1742,5 +2052,15 @@ function renderList(container, items, emptyMessage) {
 }
 
 // Start on DOM ready
-document.addEventListener("DOMContentLoaded", initialize);
+if (typeof document !== "undefined" && document.addEventListener) {
+    document.addEventListener("DOMContentLoaded", initialize);
+}
+
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = {
+        measureUtf8Bytes,
+        trimIngestPayload,
+        MAX_INGEST_PAYLOAD_BYTES
+    };
+}
 

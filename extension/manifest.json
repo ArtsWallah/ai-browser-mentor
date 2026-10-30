@@ -9,13 +9,17 @@
 
   "permissions": [
     "storage",
-    "tabs",
     "scripting",
     "activeTab"
   ],
 
   "host_permissions": [
-    "http://*/*",
+    "https://ai-browser-mentor.onrender.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+
+  "optional_host_permissions": [
     "https://*/*"
   ],
 

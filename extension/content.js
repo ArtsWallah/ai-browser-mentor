@@ -268,8 +268,10 @@ function escapeHtml(value) {
     // Do not remove legitimate short content solely because it is short
     const out = [];
     const seen = new Set();
+    const MAX_CHUNKS = 150;
 
     for (const c of raw) {
+      if (out.length >= MAX_CHUNKS) break;
       const textTrim = clean(c.text);
       if (!textTrim) {
         // Empty heading or section with no supporting text -> filter out
@@ -284,7 +286,7 @@ function escapeHtml(value) {
 
       out.push({
         heading: headingTrim,
-        text: textTrim,
+        text: textTrim.length > 5000 ? textTrim.slice(0, 5000) : textTrim,
         level: c.level,
         type: c.type
       });
@@ -298,175 +300,122 @@ function escapeHtml(value) {
   // INTERACTIVE ELEMENTS
   // ============================================================
 
- function interactive() {
-  const q =
-    "a,button,input,textarea,select," +
-    "[role='button']," +
-    "[role='link']," +
-    "[role='textbox']," +
-    "[role='searchbox']," +
-    "[onclick]," +
-    "[tabindex]";
+  const MAX_INTERACTIVE_ELEMENTS = 100;
 
-  const out = [];
+  function interactive() {
+    const q =
+      "a,button,input,textarea,select," +
+      "[role='button']," +
+      "[role='link']," +
+      "[role='textbox']," +
+      "[role='searchbox']," +
+      "[onclick]," +
+      "[tabindex]";
 
-  document
-    .querySelectorAll(q)
-    .forEach((e, i) => {
-      try {
-        if (!visible(e)) return;
+    const candidates = [];
+    document
+      .querySelectorAll(q)
+      .forEach((e, i) => {
+        try {
+          if (!visible(e)) return;
 
-        const r = e.getBoundingClientRect();
+          const tag = e.tagName ? e.tagName.toLowerCase() : "";
+          const type = (e.getAttribute?.("type") || e.type || "").toLowerCase();
+          const role = (e.getAttribute?.("role") || "").toLowerCase();
 
-        out.push({
-          index: i,
+          // Priority weighting:
+          // Priority 1: password fields (security-critical for login/credential audit)
+          // Priority 2: interactive form inputs and buttons
+          // Priority 3: navigation links and actionable roles
+          // Priority 4: other clickable/tab-accessible elements
+          let priority = 4;
+          if (type === "password") {
+            priority = 1;
+          } else if (["input", "textarea", "select", "button"].includes(tag) || type === "submit") {
+            priority = 2;
+          } else if (tag === "a" || ["button", "textbox", "searchbox", "link"].includes(role)) {
+            priority = 3;
+          }
 
-          tag:
-            e.tagName
-              ? e.tagName.toLowerCase()
-              : "",
+          candidates.push({ e, i, tag, type, role, priority });
+        } catch (error) {
+          console.warn("INTERACTIVE EXTRACTION ERROR:", error);
+        }
+      });
 
-          type:
-            e.getAttribute("type") || "",
+    // Prioritize security-relevant and actionable elements while preserving relative document order
+    candidates.sort((a, b) => a.priority - b.priority || a.i - b.i);
 
-          role:
-            e.getAttribute("role") || "",
+    const out = [];
+    const limit = Math.min(candidates.length, MAX_INTERACTIVE_ELEMENTS);
+    for (let idx = 0; idx < limit; idx++) {
+      const item = candidates[idx];
+      const e = item.e;
+      out.push({
+        index: idx,
+        tag: item.tag,
+        type: e.getAttribute?.("type") || e.type || "",
+        role: item.role,
+        text: label(e),
+        ariaLabel: clean(e.getAttribute?.("aria-label")),
+        placeholder: clean(e.getAttribute?.("placeholder")),
+        href: item.tag === "a" ? (e.href || e.getAttribute?.("href") || "") : ""
+      });
+    }
 
-          text:
-            label(e),
+    console.log(
+      "INTERACTION MAP: FOUND",
+      out.length,
+      "usable elements"
+    );
 
-          ariaLabel:
-            clean(
-              e.getAttribute("aria-label")
-            ),
-
-          placeholder:
-            clean(
-              e.getAttribute("placeholder")
-            ),
-
-          href:
-            e.tagName?.toLowerCase() === "a"
-              ? (
-                  e.href ||
-                  e.getAttribute("href") ||
-                  ""
-                )
-              : "",
-
-          x:
-            Math.round(
-              r.left + scrollX
-            ),
-
-          y:
-            Math.round(
-              r.top + scrollY
-            ),
-
-          width:
-            Math.round(r.width),
-
-          height:
-            Math.round(r.height)
-        });
-
-      } catch (error) {
-        console.warn(
-          "INTERACTIVE EXTRACTION ERROR:",
-          error
-        );
-      }
-    });
-
-  console.log(
-    "INTERACTION MAP: FOUND",
-    out.length,
-    "usable elements"
-  );
-
-  return out;
-}
+    return out;
+  }
 
   // ============================================================
   // IMAGE EXTRACTION
   // ============================================================
 
+  const MAX_IMAGES = 50;
+
   function images() {
+    const out = [];
+    const imageElements = Array.from(document.querySelectorAll("img"));
 
-  const out = [];
+    for (let i = 0; i < imageElements.length; i++) {
+      if (out.length >= MAX_IMAGES) break;
+      const e = imageElements[i];
 
-  const imageElements =
-    Array.from(
-      document.querySelectorAll("img")
-    );
+      try {
+        if (!visible(e)) {
+          continue;
+        }
 
-  imageElements.forEach((e, i) => {
+        let src = e.currentSrc || e.src || e.getAttribute?.("data-src") || "";
+        // Strip Base64 data URIs and oversized binary strings, while preserving ordinary URLs
+        if (src.startsWith("data:") || src.length > 1000) {
+          src = "";
+        }
 
-    try {
-
-      if (!visible(e)) {
-        return;
+        out.push({
+          index: out.length,
+          src: src,
+          alt: clean(e.alt || e.getAttribute?.("aria-label") || ""),
+          title: clean(e.title)
+        });
+      } catch (error) {
+        console.warn("IMAGE EXTRACTION ERROR:", error);
       }
-
-      const r =
-        e.getBoundingClientRect();
-
-      out.push({
-        index: i,
-
-        src:
-          e.currentSrc ||
-          e.src ||
-          e.getAttribute("data-src") ||
-          "",
-
-        alt:
-          clean(
-            e.alt ||
-            e.getAttribute("aria-label") ||
-            ""
-          ),
-
-        title:
-          clean(e.title),
-
-        x:
-          Math.round(
-            r.left + scrollX
-          ),
-
-        y:
-          Math.round(
-            r.top + scrollY
-          ),
-
-        width:
-          Math.round(r.width),
-
-        height:
-          Math.round(r.height)
-      });
-
-    } catch (error) {
-
-      console.warn(
-        "IMAGE EXTRACTION ERROR:",
-        error
-      );
-
     }
 
-  });
+    console.log(
+      "IMAGE MAP: FOUND",
+      out.length,
+      "images"
+    );
 
-  console.log(
-    "IMAGE MAP: FOUND",
-    out.length,
-    "images"
-  );
-
-  return out;
-}
+    return out;
+  }
 
 // ============================================================
 // LINK SECURITY
@@ -1070,81 +1019,52 @@ function scan() {
         }
       });
 
-    const body = clean(
+    const MAX_EXTRACTED_BODY_CHARS = 250000;
+    let body = clean(
       clone.innerText ||
       clone.textContent ||
       ""
     );
+    if (body.length > MAX_EXTRACTED_BODY_CHARS) {
+      body = body.slice(0, MAX_EXTRACTED_BODY_CHARS);
+    }
 
+    const c = chunks(clone);
+    const i = interactive();
+    const im = images();
 
-    const c =
-      chunks(clone);
-
-    const i =
-      interactive();
-
-    const im =
-      images();
-
-
-    const links =
-      Array.from(
-        document.querySelectorAll(
-          "a[href]"
-        )
-      ).map(
-        (a,index) => ({
-          index,
-          text:label(a),
-          url:
-            a.href ||
-            a.getAttribute("href") ||
-            "",
-          href:
-            a.href ||
-            a.getAttribute("href") ||
-            "",
-          title:
-            clean(a.title)
-        })
-      );
-
+    const MAX_LINKS = 150;
+    const rawLinks = Array.from(document.querySelectorAll("a[href]"));
+    const links = [];
+    for (let idx = 0; idx < rawLinks.length && links.length < MAX_LINKS; idx++) {
+      const a = rawLinks[idx];
+      const linkUrl = a.href || a.getAttribute?.("href") || "";
+      if (!linkUrl) continue;
+      links.push({
+        index: links.length,
+        text: label(a),
+        url: linkUrl,
+        title: clean(a.title || a.getAttribute?.("title") || "")
+      });
+    }
 
     return {
-
-      title:
-        clean(document.title) ||
-        "Current webpage",
-
-      url:
-        location.href,
-
-      description:
-        clean(
-          document
-            .querySelector(
-              'meta[name="description"]'
-            )
-            ?.content ||
-          ""
-        ),
-
-      text:body,
-
-      chunks:c,
-
-      interactiveElements:i,
-
-      images:im,
-
+      title: clean(document.title) || "Current webpage",
+      url: location.href,
+      description: clean(
+        document.querySelector('meta[name="description"]')?.content || ""
+      ),
+      text: body,
+      chunks: c,
+      interactiveElements: i,
+      images: im,
       links,
-
-      stats:{
-        chunks:c.length,
-        images:im.length,
-        links:links.length,
-        interactiveElements:i.length,
-        characters:body.length
+      stats: {
+        chunks: c.length,
+        images: im.length,
+        links: links.length,
+        interactiveElements: i.length,
+        characters: body.length
       }
     };
   }

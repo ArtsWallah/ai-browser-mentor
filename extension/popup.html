@@ -149,6 +149,33 @@
             color: var(--text);
         }
 
+        /* BACKEND CONFIGURATION PANEL */
+        .backend-config-card {
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            animation: fadeIn 0.15s ease-out;
+        }
+
+        .backend-config-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .backend-config-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
         .model-status-strip {
             display: flex;
             align-items: center;
@@ -1638,6 +1665,23 @@
                 </div>
             </div>
         </header>
+
+        <!-- BACKEND CONFIGURATION SECTION -->
+        <div class="backend-config-card" id="backendConfigSection" style="display: none;">
+            <div class="backend-config-header">
+                <span class="backend-config-title">&#9881; Configure Backend Server</span>
+                <button type="button" class="btn-icon" id="btnCloseBackendConfig" title="Close" style="font-size: 14px; padding: 2px 6px; cursor: pointer;">&times;</button>
+            </div>
+            <div style="font-size: 11px; color: var(--muted);">
+                Default: <code>https://ai-browser-mentor.onrender.com</code> &bull; Dev: <code>http://127.0.0.1:8000</code>
+            </div>
+            <div style="display: flex; gap: 6px;">
+                <input type="text" id="backendUrlInput" placeholder="https://custom-backend.com or http://localhost:8000" style="flex: 1; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 11px; outline: none;">
+                <button class="btn-primary" id="btnGrantSaveBackend" type="button" style="padding: 6px 10px; font-size: 11px; white-space: nowrap;">Grant &amp; Save</button>
+                <button class="btn-secondary" id="btnResetBackend" type="button" style="padding: 6px 8px; font-size: 11px; white-space: nowrap;">Reset to Default</button>
+            </div>
+            <div id="backendConfigStatus" style="font-size: 11px; min-height: 14px; color: var(--muted);"></div>
+        </div>
 
         <!-- ACTIVE MODEL & PRIVACY STATUS STRIP -->
         <div class="model-status-strip" id="modelStatusStrip">
