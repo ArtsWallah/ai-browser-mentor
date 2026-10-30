@@ -596,11 +596,63 @@ def test_discovery_endpoints_disabled_when_token_unconfigured(client, monkeypatc
     assert "disabled because DISCOVERY_ACCESS_TOKEN is not configured" in resp2.json()["detail"]
 
 
-def test_discovery_patterns_list_remains_unrestricted(client):
-    """GET /scamshield/discovery/patterns is a read-only endpoint that does not require discovery write token."""
+def test_discovery_patterns_list_accessible_without_auth(client):
+    """GET /scamshield/discovery/patterns is publicly accessible without a token, subject to rate limiting."""
     resp = client.get("/scamshield/discovery/patterns")
     assert resp.status_code == 200
     assert resp.json()["success"] is True
+
+
+def test_discovery_patterns_rate_limiting_enforced(client):
+    """
+    GET /scamshield/discovery/patterns enforces rate limits.
+    Requests within limit succeed; exceeding limit returns HTTP 429 with standard error structure.
+    Limiter state and route limits are cleanly restored during teardown.
+    """
+    import limits
+    from slowapi.wrappers import Limit
+
+    route_key = "app.main.scamshield_discovery_list_patterns"
+    original_limits = main_module.limiter._route_limits.get(route_key)
+    key_func = original_limits[0].key_func if original_limits else main_module.limiter._key_func
+
+    try:
+        main_module.limiter._route_limits[route_key] = [
+            Limit(
+                limits.parse("2/minute"),
+                key_func=key_func,
+                scope=None,
+                per_method=False,
+                methods=None,
+                error_message=None,
+                exempt_when=None,
+                cost=1,
+                override_defaults=True,
+            )
+        ]
+        main_module.limiter.reset()
+
+        # Requests 1 and 2 within limit must succeed
+        r1 = client.get("/scamshield/discovery/patterns")
+        assert r1.status_code == 200
+        assert r1.json().get("success") is True
+
+        r2 = client.get("/scamshield/discovery/patterns")
+        assert r2.status_code == 200
+        assert r2.json().get("success") is True
+
+        # Request 3 exceeds limit -> 429 Too Many Requests
+        r3 = client.get("/scamshield/discovery/patterns")
+        assert r3.status_code == 429
+        data = r3.json()
+        assert data["success"] is False
+        assert "Rate limit exceeded" in data["error"]
+        assert "2 per 1 minute" in data["detail"]
+        assert "Retry-After" in r3.headers
+    finally:
+        if original_limits is not None:
+            main_module.limiter._route_limits[route_key] = original_limits
+        main_module.limiter.reset()
 
 
 def test_rate_limiter_fixture_isolation_regression(client, monkeypatch):

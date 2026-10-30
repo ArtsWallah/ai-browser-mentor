@@ -2900,7 +2900,9 @@ async def scamshield_discovery_run(request: Request, body: DiscoveryRunRequest):
     summary="List candidate patterns in the human review registry",
     tags=["Phase 5 - Discovery"],
 )
+@limiter.limit(DEFAULT_AI_RATE_LIMIT)
 async def scamshield_discovery_list_patterns(
+    request: Request,
     status: str | None = None,
     sort_by: str = "novelty_score",
 ):
