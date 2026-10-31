@@ -42,6 +42,22 @@ function measureUtf8Bytes(str) {
     return unescape(encodeURIComponent(str)).length;
 }
 
+async function getAuthHeaders(extraHeaders = {}) {
+    if (typeof MentorConfig !== "undefined" && typeof MentorConfig.getAuthHeaders === "function") {
+        return await MentorConfig.getAuthHeaders(extraHeaders);
+    }
+    const headers = { "Content-Type": "application/json", ...extraHeaders };
+    if (typeof MentorConfig !== "undefined" && typeof MentorConfig.getSessionToken === "function") {
+        const token = await MentorConfig.getSessionToken();
+        if (token) {
+            headers["X-Session-ID"] = token;
+        } else {
+            throw new Error("Could not initialize secure session token with backend.");
+        }
+    }
+    return headers;
+}
+
 function trimIngestPayload(payload, maxBytes = MAX_INGEST_PAYLOAD_BYTES) {
     if (!payload || typeof payload !== "object") return null;
 
@@ -392,6 +408,9 @@ async function initialize() {
     }
     await loadPrivacyMode();
     checkBackendHealth();
+    if (typeof MentorConfig !== "undefined" && typeof MentorConfig.getSessionToken === "function") {
+        MentorConfig.getSessionToken().catch(() => null);
+    }
     await resolveActiveTab();
     setupEventListeners();
     showCommandEmptyState();
@@ -595,7 +614,9 @@ async function readCurrentPage() {
             throw new Error(pageData?.error || "Could not extract page text.");
         }
 
-        const pageId = `page_${Date.now()}`;
+        const pageId = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+            ? `page_${crypto.randomUUID()}`
+            : `page_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
 
         // Transmit structured document to backend
         const rawPayload = {
@@ -629,7 +650,7 @@ async function readCurrentPage() {
 
         const res = await fetch(`${BACKEND_URL}/page/ingest`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: await getAuthHeaders(),
             body: serializedBody
         });
 
@@ -806,7 +827,7 @@ async function executeCommand(overrideInstruction = "", intentOverride = "auto")
 
         const res = await fetch(`${BACKEND_URL}/command/execute`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: await getAuthHeaders(),
             body: JSON.stringify(payload)
         });
 
@@ -1017,7 +1038,7 @@ async function auditPageSecurity() {
     try {
         const res = await fetch(`${BACKEND_URL}/security/analyze-page`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: await getAuthHeaders(),
             body: JSON.stringify({ page_id: currentPageId })
         });
 
@@ -1240,7 +1261,7 @@ async function scanAndRenderLinks(links = [], pageUrl = "") {
     try {
         const res = await fetch(`${BACKEND_URL}/scan-links`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: await getAuthHeaders(),
             body: JSON.stringify({ links: links.slice(0, 100), page_id: currentPageId })
         });
 

@@ -9,6 +9,12 @@
   const DEFAULT_BACKEND_URL = "https://ai-browser-mentor.onrender.com";
   const DEV_BACKEND_URL = "http://127.0.0.1:8000";
   const STORAGE_KEY = "abm_backend_url_override";
+  const SESSION_STORAGE_KEY = "abm_session_token";
+  const SESSION_TOKEN_PREFIX = "abm_s_";
+  const SESSION_TOKEN_REGEX = /^[A-Za-z0-9_-]{24,256}$/;
+
+  let cachedSessionToken = null;
+  let initSessionPromise = null;
 
   /**
    * Check whether a given URL is covered by the static host_permissions in manifest.json:
@@ -332,16 +338,245 @@
     return DEFAULT_BACKEND_URL;
   }
 
+  /**
+   * Validate that a session token adheres to length and character-set requirements.
+   * Only base64url characters [A-Za-z0-9_-] with length 24-256 are permitted.
+   */
+  function isValidSessionToken(token) {
+    if (!token || typeof token !== "string") {
+      return false;
+    }
+    const trimmed = token.trim();
+    if (trimmed.length < 24 || trimmed.length > 256) {
+      return false;
+    }
+    return SESSION_TOKEN_REGEX.test(trimmed);
+  }
+
+  /**
+   * Read stored session token from chrome.storage.local with safe messaging fallback
+   * for sandboxed or content-script environments where direct storage is unavailable.
+   */
+  function readStoredToken() {
+    return new Promise((resolve) => {
+      // 1. Direct chrome.storage.local access
+      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+        try {
+          chrome.storage.local.get([SESSION_STORAGE_KEY], (items) => {
+            if (chrome.runtime && chrome.runtime.lastError) {
+              resolve(null);
+            } else {
+              const val = items ? items[SESSION_STORAGE_KEY] : null;
+              resolve(typeof val === "string" ? val : null);
+            }
+          });
+          return;
+        } catch {
+          // Fall through to messaging fallback
+        }
+      }
+
+      // 2. Safe messaging fallback if direct storage is unavailable
+      if (typeof chrome !== "undefined" && chrome.runtime && typeof chrome.runtime.sendMessage === "function") {
+        try {
+          chrome.runtime.sendMessage({ type: "ABM_GET_SESSION_TOKEN" }, (response) => {
+            if (chrome.runtime && chrome.runtime.lastError) {
+              resolve(null);
+            } else if (response && response.success && response.sessionToken) {
+              resolve(response.sessionToken);
+            } else {
+              resolve(null);
+            }
+          });
+          return;
+        } catch {
+          resolve(null);
+        }
+      }
+
+      // 3. In-memory fallback
+      resolve(cachedSessionToken || null);
+    });
+  }
+
+  /**
+   * Write session token to storage with safe messaging fallback.
+   * Never persists invalid, empty, or corrupt tokens.
+   */
+  function writeStoredToken(token) {
+    if (!isValidSessionToken(token)) {
+      return Promise.resolve(false);
+    }
+    cachedSessionToken = token;
+
+    return new Promise((resolve) => {
+      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+        try {
+          chrome.storage.local.set({ [SESSION_STORAGE_KEY]: token }, () => {
+            resolve(!Boolean(chrome.runtime && chrome.runtime.lastError));
+          });
+          return;
+        } catch {
+          // Fall through to messaging fallback
+        }
+      }
+
+      if (typeof chrome !== "undefined" && chrome.runtime && typeof chrome.runtime.sendMessage === "function") {
+        try {
+          chrome.runtime.sendMessage({ type: "ABM_SET_SESSION_TOKEN", token }, (response) => {
+            resolve(Boolean(response && response.success));
+          });
+          return;
+        } catch {
+          resolve(false);
+        }
+      }
+
+      resolve(true);
+    });
+  }
+
+  /**
+   * Remove stored session token from persistent storage and memory.
+   */
+  function removeStoredToken() {
+    cachedSessionToken = null;
+
+    return new Promise((resolve) => {
+      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+        try {
+          chrome.storage.local.remove([SESSION_STORAGE_KEY], () => {
+            resolve(!Boolean(chrome.runtime && chrome.runtime.lastError));
+          });
+          return;
+        } catch {
+          // Fall through
+        }
+      }
+
+      if (typeof chrome !== "undefined" && chrome.runtime && typeof chrome.runtime.sendMessage === "function") {
+        try {
+          chrome.runtime.sendMessage({ type: "ABM_CLEAR_SESSION_TOKEN" }, (response) => {
+            resolve(Boolean(response && response.success));
+          });
+          return;
+        } catch {
+          resolve(false);
+        }
+      }
+
+      resolve(true);
+    });
+  }
+
+  /**
+   * Request a fresh session token from the backend /session/init endpoint.
+   * In-flight deduplication ensures concurrent calls share a single network request.
+   * Never logs raw tokens. Does not save corrupt state on failure.
+   */
+  async function initSession() {
+    if (initSessionPromise) {
+      return initSessionPromise;
+    }
+
+    initSessionPromise = (async () => {
+      try {
+        const backendUrl = await resolveBackendUrl();
+        const initUrl = `${backendUrl}/session/init`;
+
+        const response = await fetch(initUrl, {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          console.warn("AI Browser Mentor: Failed to initialize session (status: " + response.status + ")");
+          return null;
+        }
+
+        const data = await response.json();
+        if (data && data.success && isValidSessionToken(data.session_token)) {
+          await writeStoredToken(data.session_token);
+          return data.session_token;
+        }
+
+        console.warn("AI Browser Mentor: Server returned invalid session token structure");
+        return null;
+      } catch (err) {
+        console.warn("AI Browser Mentor: Network error during session initialization");
+        return null;
+      } finally {
+        initSessionPromise = null;
+      }
+    })();
+
+    return initSessionPromise;
+  }
+
+  /**
+   * Retrieve the active session token.
+   * - If cached or in storage, returns the existing token (reusing it).
+   * - If missing or forceRefresh is true, requests a new token via initSession().
+   * - Returns null if the backend is unreachable or initialization fails.
+   */
+  async function getSessionToken(forceRefresh = false) {
+    if (!forceRefresh) {
+      if (isValidSessionToken(cachedSessionToken)) {
+        return cachedSessionToken;
+      }
+
+      const stored = await readStoredToken();
+      if (isValidSessionToken(stored)) {
+        cachedSessionToken = stored;
+        return stored;
+      }
+    }
+
+    return await initSession();
+  }
+
+  /**
+   * Clear active session token from cache and persistent storage.
+   */
+  async function clearSessionToken() {
+    return await removeStoredToken();
+  }
+
+  /**
+   * Helper that resolves standard authentication headers for backend API requests.
+   * Fails closed (throws an Error) if session initialization failed.
+   */
+  async function getAuthHeaders(extraHeaders = {}) {
+    const token = await getSessionToken();
+    if (!token) {
+      throw new Error("Could not obtain secure session token from backend.");
+    }
+    return {
+      "Content-Type": "application/json",
+      "X-Session-ID": token,
+      ...extraHeaders,
+    };
+  }
+
   const MentorConfig = {
     DEFAULT_BACKEND_URL,
     DEV_BACKEND_URL,
     STORAGE_KEY,
+    SESSION_STORAGE_KEY,
+    SESSION_TOKEN_PREFIX,
+    isValidSessionToken,
     sanitizeBackendUrl,
     resolveBackendUrl,
     isDefaultBackendOrigin,
     getBackendOriginPattern,
     hasBackendPermission,
     requestBackendPermission,
+    getSessionToken,
+    initSession,
+    clearSessionToken,
+    getAuthHeaders,
   };
 
   if (typeof globalThis !== "undefined") {

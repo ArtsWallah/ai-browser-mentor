@@ -243,9 +243,13 @@ async function executeWorkspaceQuery(query) {
     setLoading(true, "Synthesizing cross-source evidence...", "Extracting relevant passages and citations");
 
     try {
+        const authHeaders = (typeof MentorConfig !== "undefined" && typeof MentorConfig.getAuthHeaders === "function")
+            ? await MentorConfig.getAuthHeaders()
+            : { "Content-Type": "application/json" };
+
         const res = await fetch(`${BACKEND_URL}/workspace/query`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: authHeaders,
             body: JSON.stringify({
                 query: query,
                 workspace_name: currentWorkspace.name,
@@ -284,9 +288,13 @@ async function executeWorkspaceCompare(focusTopic) {
     setLoading(true, "Comparing saved sources...", "Extracting agreement, differences, and unverified claims");
 
     try {
+        const authHeaders = (typeof MentorConfig !== "undefined" && typeof MentorConfig.getAuthHeaders === "function")
+            ? await MentorConfig.getAuthHeaders()
+            : { "Content-Type": "application/json" };
+
         const res = await fetch(`${BACKEND_URL}/workspace/compare`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: authHeaders,
             body: JSON.stringify({
                 workspace_name: currentWorkspace.name,
                 focus_topic: focusTopic,

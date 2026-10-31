@@ -143,10 +143,67 @@ chrome.runtime.onMessage.addListener(
         sendResponse
     ) => {
 
-        console.log(
-            "BACKGROUND: MESSAGE RECEIVED",
-            message
-        );
+        if (!message?.type?.startsWith("ABM_")) {
+            console.log(
+                "BACKGROUND: MESSAGE RECEIVED",
+                message
+            );
+        } else {
+            // Verify message originated strictly from this extension
+            if (sender.id && typeof chrome !== "undefined" && chrome.runtime && sender.id !== chrome.runtime.id) {
+                sendResponse({ success: false, error: "Unauthorized sender" });
+                return true;
+            }
+        }
+
+        // ====================================================
+        // SESSION TOKEN MESSAGING FALLBACK
+        // ====================================================
+
+        if (message?.type === "ABM_GET_SESSION_TOKEN") {
+            try {
+                chrome.storage.local.get(["abm_session_token"], (items) => {
+                    if (chrome.runtime && chrome.runtime.lastError) {
+                        sendResponse({ success: false, sessionToken: null });
+                    } else {
+                        sendResponse({
+                            success: true,
+                            sessionToken: items ? items["abm_session_token"] || null : null,
+                        });
+                    }
+                });
+            } catch {
+                sendResponse({ success: false, sessionToken: null });
+            }
+            return true;
+        }
+
+        if (message?.type === "ABM_SET_SESSION_TOKEN") {
+            const token = message?.token;
+            if (typeof token === "string" && /^[A-Za-z0-9_-]{24,256}$/.test(token.trim())) {
+                try {
+                    chrome.storage.local.set({ abm_session_token: token.trim() }, () => {
+                        sendResponse({ success: !Boolean(chrome.runtime && chrome.runtime.lastError) });
+                    });
+                } catch {
+                    sendResponse({ success: false });
+                }
+            } else {
+                sendResponse({ success: false });
+            }
+            return true;
+        }
+
+        if (message?.type === "ABM_CLEAR_SESSION_TOKEN") {
+            try {
+                chrome.storage.local.remove(["abm_session_token"], () => {
+                    sendResponse({ success: !Boolean(chrome.runtime && chrome.runtime.lastError) });
+                });
+            } catch {
+                sendResponse({ success: false });
+            }
+            return true;
+        }
 
 
         // ====================================================

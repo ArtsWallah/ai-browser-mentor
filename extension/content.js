@@ -2067,6 +2067,19 @@ function enableHover() {
 
   try {
 
+    const requestHeaders = {
+      "Content-Type": "application/json"
+    };
+
+    if (typeof MentorConfig !== "undefined" && typeof MentorConfig.getSessionToken === "function") {
+      const sessionToken = await MentorConfig.getSessionToken();
+      if (sessionToken) {
+        requestHeaders["X-Session-ID"] = sessionToken;
+      } else {
+        throw new Error("Could not initialize secure session token with backend.");
+      }
+    }
+
     response =
       await fetch(
         url,
@@ -2074,10 +2087,7 @@ function enableHover() {
           method:
             "POST",
 
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
+          headers: requestHeaders,
 
           body:
             JSON.stringify(
