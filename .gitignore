@@ -31,3 +31,7 @@ desktop.ini
 
 # Logs
 *.log
+# Large local archives (never commit)
+/backend.zip.zip
+/extension.zip.zip
+/tests.zip.zip
