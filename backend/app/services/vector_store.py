@@ -1,6 +1,9 @@
 import os
 import json
+import hashlib
+import shutil
 import numpy as np
+from app.services.memory_diagnostics import log_memory_checkpoint
 
 try:
     import faiss
@@ -29,23 +32,153 @@ EMBEDDING_DIMENSION = 384
 
 
 # ============================================================
-# PATHS
+# PATHS & SAFE IDENTIFIERS
 # ============================================================
 
-def _safe_id(page_id: str) -> str:
-    return str(page_id).replace("/", "_").replace("\\", "_").replace(":", "_")
+def _safe_id(page_id: str, session_hash: str | None = None) -> str:
+    """
+    Deterministic, collision-resistant, and filesystem-safe filename identifier.
+    Transforms arbitrary page IDs (optionally scoped by session_hash) into a strictly validated
+    64-character lowercase SHA-256 hex string.
+
+    Guarantees:
+    - Exactly 64 characters long, containing only lowercase hexadecimal characters [0-9a-f].
+    - Multi-user isolation: when session_hash is provided, storage is strictly scoped to that session.
+    - Immune to Windows reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9).
+    - Immune to illegal characters (* ? < > | " : / \\) and control/null bytes.
+    - Immune to directory traversal (.. and .).
+    - Rejects empty, whitespace-only, or None inputs safely with ValueError.
+    - Deterministic: identical inputs always produce identical filenames.
+    - Collision-resistant: different inputs produce different filenames.
+    """
+    if page_id is None:
+        raise ValueError("page_id cannot be None")
+
+    if not isinstance(page_id, (str, bytes)):
+        page_id = str(page_id)
+
+    if isinstance(page_id, bytes):
+        raw_bytes = page_id
+    else:
+        clean = page_id.strip()
+        if not clean:
+            raise ValueError("page_id cannot be empty or whitespace-only")
+        raw_bytes = clean.encode("utf-8")
+
+    if session_hash is not None:
+        if not isinstance(session_hash, str) or not session_hash.strip():
+            raise ValueError("session_hash cannot be empty or whitespace-only")
+        clean_sh = session_hash.strip().lower()
+        if len(clean_sh) != 64 or not all(c in "0123456789abcdef" for c in clean_sh):
+            raise ValueError("session_hash must be a valid 64-character lowercase hex digest")
+        raw_bytes = f"{clean_sh}:".encode("utf-8") + raw_bytes
+
+    digest = hashlib.sha256(raw_bytes).hexdigest().lower()
+    return digest
 
 
-def get_index_path(page_id: str) -> str:
-    return os.path.join(VECTOR_DIR, f"{_safe_id(page_id)}.index")
+def _resolve_safe_path(filename: str) -> str:
+    """
+    Validates vector-store path containment and verifies no symlink or traversal escape.
+    """
+    if not isinstance(filename, str) or not filename.endswith((".index", ".npy", ".json")):
+        raise ValueError("Invalid vector store filename extension")
+
+    base_name = filename.rsplit(".", 1)[0]
+    if len(base_name) != 64 or not all(c in "0123456789abcdef" for c in base_name):
+        raise ValueError("Invalid vector store filename base format")
+
+    abs_vector_dir = os.path.abspath(VECTOR_DIR)
+    target_path = os.path.abspath(os.path.join(VECTOR_DIR, filename))
+
+    # Path traversal safety check
+    if not target_path.startswith(abs_vector_dir + os.sep) and target_path != abs_vector_dir:
+        raise ValueError("Path traversal detected outside vector store directory")
+
+    # Symlink safety check: reject symlinks
+    if os.path.islink(target_path):
+        raise ValueError("Symlink traversal detected in vector store path")
+
+    return target_path
 
 
-def get_embeddings_path(page_id: str) -> str:
-    return os.path.join(VECTOR_DIR, f"{_safe_id(page_id)}.npy")
+def _legacy_safe_id(page_id: str) -> str | None:
+    """Legacy unhashed sanitization mapping for backward compatibility."""
+    if page_id is None:
+        return None
+    clean = str(page_id).strip()
+    if not clean:
+        return None
+    return clean.replace("/", "_").replace("\\", "_").replace(":", "_")
 
 
-def get_metadata_path(page_id: str) -> str:
-    return os.path.join(VECTOR_DIR, f"{_safe_id(page_id)}.json")
+def _get_legacy_index_path(page_id: str) -> str | None:
+    lid = _legacy_safe_id(page_id)
+    return os.path.join(VECTOR_DIR, f"{lid}.index") if lid else None
+
+
+def _get_legacy_embeddings_path(page_id: str) -> str | None:
+    lid = _legacy_safe_id(page_id)
+    return os.path.join(VECTOR_DIR, f"{lid}.npy") if lid else None
+
+
+def _get_legacy_metadata_path(page_id: str) -> str | None:
+    lid = _legacy_safe_id(page_id)
+    return os.path.join(VECTOR_DIR, f"{lid}.json") if lid else None
+
+
+def get_index_path(page_id: str, session_hash: str | None = None) -> str:
+    filename = f"{_safe_id(page_id, session_hash)}.index"
+    return _resolve_safe_path(filename)
+
+
+def get_embeddings_path(page_id: str, session_hash: str | None = None) -> str:
+    filename = f"{_safe_id(page_id, session_hash)}.npy"
+    return _resolve_safe_path(filename)
+
+
+def get_metadata_path(page_id: str, session_hash: str | None = None) -> str:
+    filename = f"{_safe_id(page_id, session_hash)}.json"
+    return _resolve_safe_path(filename)
+
+
+def migrate_legacy_index(page_id: str) -> bool:
+    """
+    Transparently migrates an existing unhashed legacy index file
+    to its new hardened SHA-256 path, ensuring no disruption to stored data.
+    """
+    if not page_id or not str(page_id).strip():
+        return False
+    try:
+        target_meta = get_metadata_path(page_id)
+        target_idx = get_index_path(page_id)
+        target_npy = get_embeddings_path(page_id)
+    except ValueError:
+        return False
+
+    legacy_meta = _get_legacy_metadata_path(page_id)
+    if not legacy_meta or not os.path.exists(legacy_meta):
+        return False
+
+    migrated = False
+    try:
+        if not os.path.exists(target_meta):
+            shutil.copy2(legacy_meta, target_meta)
+            migrated = True
+
+        legacy_idx = _get_legacy_index_path(page_id)
+        if legacy_idx and os.path.exists(legacy_idx) and not os.path.exists(target_idx):
+            shutil.copy2(legacy_idx, target_idx)
+            migrated = True
+
+        legacy_npy = _get_legacy_embeddings_path(page_id)
+        if legacy_npy and os.path.exists(legacy_npy) and not os.path.exists(target_npy):
+            shutil.copy2(legacy_npy, target_npy)
+            migrated = True
+
+        return migrated
+    except OSError:
+        return False
 
 
 # ============================================================
@@ -55,8 +188,12 @@ def get_metadata_path(page_id: str) -> str:
 def create_index(
     page_id: str,
     embeddings: np.ndarray,
-    chunks: list
+    chunks: list,
+    session_hash: str | None = None,
 ):
+    if not page_id or not str(page_id).strip():
+        raise ValueError("page_id cannot be empty or blank")
+
     embeddings = np.asarray(embeddings, dtype="float32")
 
     if embeddings.ndim == 1:
@@ -67,25 +204,30 @@ def create_index(
             f"Expected embedding dimension {EMBEDDING_DIMENSION}, got {embeddings.shape[1]}"
         )
 
+    log_memory_checkpoint("faiss_index_create_begin")
+
     # Always persist numpy embeddings for universal portability / fallback
-    np.save(get_embeddings_path(page_id), embeddings)
+    np.save(get_embeddings_path(page_id, session_hash), embeddings)
 
     # If FAISS is available, also build and save the FAISS index
     if FAISS_AVAILABLE and faiss is not None:
         try:
             index = faiss.IndexFlatIP(EMBEDDING_DIMENSION)
             index.add(embeddings)
-            faiss.write_index(index, get_index_path(page_id))
+            faiss.write_index(index, get_index_path(page_id, session_hash))
         except Exception as error:
             print(f"[vector_store] FAISS index creation failed, using numpy store: {error}")
 
     metadata = {
         "page_id": page_id,
+        "session_hash": session_hash,
         "chunks": chunks
     }
 
-    with open(get_metadata_path(page_id), "w", encoding="utf-8") as f:
+    with open(get_metadata_path(page_id, session_hash), "w", encoding="utf-8") as f:
         json.dump(metadata, f, ensure_ascii=False, indent=2)
+
+    log_memory_checkpoint("faiss_index_create_complete")
 
     return {
         "page_id": page_id,
@@ -94,13 +236,67 @@ def create_index(
 
 
 # ============================================================
-# LOAD INDEX
+# LOAD INDEX & METADATA
 # ============================================================
 
-def load_index(page_id: str):
-    metadata_path = get_metadata_path(page_id)
-    if not os.path.exists(metadata_path):
+def get_metadata(page_id: str, session_hash: str | None = None) -> dict | None:
+    """Safely retrieve only the metadata/chunks for a page without loading full vectors."""
+    if not page_id or not str(page_id).strip():
         return None
+    try:
+        path = get_metadata_path(page_id, session_hash)
+    except ValueError:
+        return None
+
+    if not os.path.exists(path):
+        # Legacy fallback permitted ONLY when session_hash is None (never adopt unowned legacy for a session)
+        if session_hash is None:
+            legacy_path = _get_legacy_metadata_path(page_id)
+            if legacy_path and os.path.exists(legacy_path):
+                path = legacy_path
+            else:
+                return None
+        else:
+            return None
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def load_index(page_id: str, session_hash: str | None = None):
+    if not page_id or not str(page_id).strip():
+        return None
+
+    try:
+        metadata_path = get_metadata_path(page_id, session_hash)
+    except ValueError:
+        return None
+
+    # Check primary hardened path
+    if not os.path.exists(metadata_path):
+        # Legacy fallback permitted ONLY when session_hash is None (never adopt unowned legacy for a session)
+        if session_hash is None:
+            legacy_path = _get_legacy_metadata_path(page_id)
+            if legacy_path and os.path.exists(legacy_path):
+                # Transparently migrate legacy files
+                migrate_legacy_index(page_id)
+                if not os.path.exists(metadata_path):
+                    metadata_path = legacy_path
+                    index_path = _get_legacy_index_path(page_id)
+                    npy_path = _get_legacy_embeddings_path(page_id)
+                else:
+                    index_path = get_index_path(page_id)
+                    npy_path = get_embeddings_path(page_id)
+            else:
+                return None
+        else:
+            return None
+    else:
+        index_path = get_index_path(page_id, session_hash)
+        npy_path = get_embeddings_path(page_id, session_hash)
 
     try:
         with open(metadata_path, "r", encoding="utf-8") as f:
@@ -111,8 +307,7 @@ def load_index(page_id: str):
     chunks = metadata.get("chunks", [])
 
     # Try loading FAISS index first if available
-    index_path = get_index_path(page_id)
-    if FAISS_AVAILABLE and faiss is not None and os.path.exists(index_path):
+    if FAISS_AVAILABLE and faiss is not None and index_path and os.path.exists(index_path):
         try:
             index = faiss.read_index(index_path)
             return {
@@ -124,8 +319,7 @@ def load_index(page_id: str):
             pass
 
     # Fallback to numpy embeddings
-    npy_path = get_embeddings_path(page_id)
-    if os.path.exists(npy_path):
+    if npy_path and os.path.exists(npy_path):
         try:
             embeddings = np.load(npy_path)
             return {
@@ -139,6 +333,53 @@ def load_index(page_id: str):
     return None
 
 
+def delete_index(page_id: str, session_hash: str | None = None) -> bool:
+    """
+    Safely delete all stored files (.index, .npy, .json) for a given page_id and session_hash.
+    Returns True if at least one file was removed, False otherwise.
+    """
+    if not page_id or not str(page_id).strip():
+        return False
+
+    removed = False
+
+    # Target hardened SHA-256 paths
+    try:
+        paths = [
+            get_index_path(page_id, session_hash),
+            get_embeddings_path(page_id, session_hash),
+            get_metadata_path(page_id, session_hash)
+        ]
+        for p in paths:
+            if os.path.exists(p) and not os.path.islink(p):
+                try:
+                    os.remove(p)
+                    removed = True
+                except OSError:
+                    pass
+    except ValueError:
+        pass
+
+    # Target legacy paths if present and session_hash is None
+    if session_hash is None:
+        legacy_id = _legacy_safe_id(page_id)
+        if legacy_id:
+            legacy_paths = [
+                os.path.join(VECTOR_DIR, f"{legacy_id}.index"),
+                os.path.join(VECTOR_DIR, f"{legacy_id}.npy"),
+                os.path.join(VECTOR_DIR, f"{legacy_id}.json"),
+            ]
+            for p in legacy_paths:
+                if os.path.exists(p) and not os.path.islink(p):
+                    try:
+                        os.remove(p)
+                        removed = True
+                    except OSError:
+                        pass
+
+    return removed
+
+
 # ============================================================
 # SEARCH
 # ============================================================
@@ -146,9 +387,10 @@ def load_index(page_id: str):
 def search(
     page_id: str,
     query_embedding: np.ndarray,
-    top_k: int = 5
+    top_k: int = 5,
+    session_hash: str | None = None,
 ):
-    data = load_index(page_id)
+    data = load_index(page_id, session_hash=session_hash)
     if data is None:
         return []
 

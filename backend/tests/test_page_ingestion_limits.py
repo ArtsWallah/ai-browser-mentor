@@ -12,11 +12,15 @@ Verifies:
 import pytest
 from starlette.testclient import TestClient
 from app.main import app, MAX_REQUEST_BODY_SIZE, get_page
+from app.services.session_service import hash_session_token
+
+TEST_TOKEN = "abm_s_test_ingestion_token_1234567890"
+TEST_SESSION_HASH = hash_session_token(TEST_TOKEN)
 
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    return TestClient(app, headers={"X-Session-ID": TEST_TOKEN})
 
 
 def test_valid_page_ingestion_succeeds(client):
@@ -67,7 +71,7 @@ def test_valid_page_ingestion_succeeds(client):
 
 def test_get_ingested_page_roundtrip(client):
     """Confirm an ingested page is properly saved and retrievable via get_page()."""
-    page = get_page("test_page_normal_1")
+    page = get_page(TEST_SESSION_HASH, "test_page_normal_1")
     assert page is not None
     assert page.get("page_id") == "test_page_normal_1"
     assert page.get("title") == "Introduction to Browser Security"
@@ -106,10 +110,9 @@ def test_command_execution_with_missing_page_fails_gracefully(client):
     }
 
     res = client.post("/command/execute", json=cmd_payload)
-    assert res.status_code == 200
+    assert res.status_code == 404
     data = res.json()
-    assert data.get("success") is False
-    assert "No page chunks" in (data.get("error") or "") or "not loaded" in (data.get("answer") or "").lower() or "not indexed" in (data.get("action_summary") or "").lower()
+    assert "Page not found" in data.get("detail", "")
 
 
 def test_oversized_payload_rejected_with_413(client):

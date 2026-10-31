@@ -12,7 +12,7 @@ from app.services.vector_store import create_index, search, load_index
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    return TestClient(app, headers={"X-Session-ID": "abm_s_test_session_token_backend_test"})
 
 
 # ============================================================
@@ -441,15 +441,13 @@ def test_command_execution_validation_errors(client):
     resp_oversized = client.post("/command/execute", json={"instruction": "X" * 2500})
     assert resp_oversized.status_code == 422
 
-    # Inaccessible / missing page context
+    # Inaccessible / missing page context (Phase 2D: rejects unowned/missing page_id with 404)
     resp_nopage = client.post("/command/execute", json={
         "instruction": "Summarize this page",
         "page_id": "nonexistent-page-12345"
     })
-    assert resp_nopage.status_code == 200
-    data = resp_nopage.json()
-    assert data["success"] is False
-    assert "couldn't find readable text" in data["answer"].lower() or "no readable" in data["answer"].lower()
+    assert resp_nopage.status_code == 404
+    assert "Page not found" in resp_nopage.json()["detail"]
 
 
 # ============================================================

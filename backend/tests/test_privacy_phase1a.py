@@ -29,7 +29,7 @@ from app.services.security_service import analyze_page_security
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    return TestClient(app, headers={"X-Session-ID": "abm_s_test_session_token_privacy_test"})
 
 
 # ============================================================

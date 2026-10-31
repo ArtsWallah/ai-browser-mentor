@@ -159,9 +159,19 @@ def test_debug_single_page_rejects_unauthorized_requests(client, monkeypatch):
     resp_wrong = client.get("/debug/pages/test-page-id", headers={"X-Debug-Token": "bad-token"})
     assert resp_wrong.status_code == 403
 
-    # 4. Valid token -> 200
-    resp_ok = client.get("/debug/pages/test-page-id", headers={"X-Debug-Token": "valid-token-123"})
-    assert resp_ok.status_code == 200
+    # 4. Valid token + valid session token + existing page -> 200
+    from app.services.session_service import hash_session_token
+    session_token = "abm_s_debug_test_token_1234567890123"
+    session_hash = hash_session_token(session_token)
+    main_module.page_store.set(session_hash, "test-page-id", {"page_id": "test-page-id", "title": "Test Page"})
+    try:
+        resp_ok = client.get(
+            "/debug/pages/test-page-id",
+            headers={"X-Debug-Token": "valid-token-123", "X-Session-ID": session_token}
+        )
+        assert resp_ok.status_code == 200
+    finally:
+        main_module.page_store.delete(session_hash, "test-page-id")
 
 
 def test_debug_rejected_responses_do_not_expose_page_data(client, monkeypatch):
@@ -170,7 +180,8 @@ def test_debug_rejected_responses_do_not_expose_page_data(client, monkeypatch):
     secret_url = "https://internal-bank.example.corp/confidential-balance"
     secret_content = "Super sensitive financial ledger data 12345"
 
-    main_module.page_store[secret_page_id] = {
+    dummy_session_hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    main_module.page_store.set(dummy_session_hash, secret_page_id, {
         "page_id": secret_page_id,
         "title": "Confidential Ledger",
         "url": secret_url,
@@ -180,7 +191,7 @@ def test_debug_rejected_responses_do_not_expose_page_data(client, monkeypatch):
         "links": [],
         "images": [],
         "interactiveElements": [],
-    }
+    })
 
     try:
         # Case A: Token unconfigured
@@ -214,7 +225,7 @@ def test_debug_rejected_responses_do_not_expose_page_data(client, monkeypatch):
         assert secret_content not in resp_invalid.text
 
     finally:
-        main_module.page_store._data.pop(secret_page_id, None)
+        main_module.page_store.delete(dummy_session_hash, secret_page_id)
 
 
 # ============================================================
@@ -264,28 +275,29 @@ def test_request_size_limit_streaming_chunk_413():
 def test_bounded_page_store_lru_eviction():
     """Page store enforces maximum capacity and evicts least recently accessed entries first."""
     store = BoundedPageStore(max_size=3)
+    s = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-    store["page-1"] = {"title": "Page 1"}
-    store["page-2"] = {"title": "Page 2"}
-    store["page-3"] = {"title": "Page 3"}
+    store.set(s, "page-1", {"title": "Page 1"})
+    store.set(s, "page-2", {"title": "Page 2"})
+    store.set(s, "page-3", {"title": "Page 3"})
     assert len(store) == 3
 
     # Access page-1 so it becomes most recently used; page-2 is now oldest
-    _ = store.get("page-1")
+    _ = store.get(s, "page-1")
 
     # Add page-4 -> should evict page-2
-    store["page-4"] = {"title": "Page 4"}
+    store.set(s, "page-4", {"title": "Page 4"})
     assert len(store) == 3
-    assert "page-2" not in store
-    assert "page-1" in store
-    assert "page-3" in store
-    assert "page-4" in store
+    assert not store.contains(s, "page-2")
+    assert store.contains(s, "page-1")
+    assert store.contains(s, "page-3")
+    assert store.contains(s, "page-4")
 
     # Add page-5 -> should evict page-3
-    store["page-5"] = {"title": "Page 5"}
+    store.set(s, "page-5", {"title": "Page 5"})
     assert len(store) == 3
-    assert "page-3" not in store
-    assert "page-1" in store
+    assert not store.contains(s, "page-3")
+    assert store.contains(s, "page-1")
 
 
 def test_bounded_page_store_concurrency():
@@ -293,12 +305,13 @@ def test_bounded_page_store_concurrency():
     import concurrent.futures
 
     store = BoundedPageStore(max_size=50)
+    s = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
     def worker(i: int):
         for j in range(20):
-            key = f"key-{i}-{j}"
-            store[key] = {"val": j}
-            _ = store.get(key)
+            pid = f"key-{i}-{j}"
+            store.set(s, pid, {"val": j})
+            _ = store.get(s, pid)
         return True
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:

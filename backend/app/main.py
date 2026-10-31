@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException, Depends
+from fastapi import FastAPI, Header, HTTPException, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -27,6 +27,8 @@ from slowapi.errors import RateLimitExceeded
 
 from app.services.embedding_service import embed_texts, embed_text
 from app.services.vector_store import create_index, search, init_vector_store_dir, cleanup_temporary_vector_store
+from app.services.memory_diagnostics import log_memory_checkpoint
+from app.services.session_service import create_session_token, get_current_session_hash
 
 # ============================================================
 # ENVIRONMENT & SECURITY CONFIGURATION
@@ -275,29 +277,35 @@ app.add_middleware(
 
 class BoundedPageStore:
     """
-    Thread-safe, bounded in-memory LRU store for active tab contexts.
-    Strictly prevents memory exhaustion across long-running server sessions.
+    Thread-safe, session-isolated, bounded in-memory LRU store for active tab contexts.
+    Strictly prevents memory exhaustion and enforces multi-user data isolation.
+    Stores records using (session_hash, page_id) composite keys.
     """
     def __init__(self, max_size: int = MAX_IN_MEMORY_PAGES):
         self.max_size = max(1, max_size)
-        self._data: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self._data: OrderedDict[tuple[str, str], dict[str, Any]] = OrderedDict()
         self._lock = threading.Lock()
 
-    def get(self, key: str, default: Any = None) -> Any:
+    def _normalize_key(self, session_hash: str, page_id: str) -> tuple[str, str]:
+        if not session_hash or not isinstance(session_hash, str) or not session_hash.strip():
+            raise ValueError("session_hash must be a non-empty string")
+        if not page_id or not isinstance(page_id, str) or not page_id.strip():
+            raise ValueError("page_id must be a non-empty string")
+        return (session_hash.strip().lower(), page_id.strip())
+
+    def get(self, session_hash: str, page_id: str, default: Any = None) -> Any:
+        try:
+            key = self._normalize_key(session_hash, page_id)
+        except (ValueError, AttributeError):
+            return default
         with self._lock:
             if key in self._data:
                 self._data.move_to_end(key)
                 return self._data[key]
             return default
 
-    def __getitem__(self, key: str) -> dict[str, Any]:
-        with self._lock:
-            if key in self._data:
-                self._data.move_to_end(key)
-                return self._data[key]
-            raise KeyError(key)
-
-    def __setitem__(self, key: str, value: dict[str, Any]) -> None:
+    def set(self, session_hash: str, page_id: str, value: dict[str, Any]) -> None:
+        key = self._normalize_key(session_hash, page_id)
         with self._lock:
             if key in self._data:
                 self._data.move_to_end(key)
@@ -307,9 +315,42 @@ class BoundedPageStore:
                     self._data.popitem(last=False)
                 self._data[key] = value
 
-    def __contains__(self, key: str) -> bool:
+    def delete(self, session_hash: str, page_id: str) -> bool:
+        try:
+            key = self._normalize_key(session_hash, page_id)
+        except (ValueError, AttributeError):
+            return False
+        with self._lock:
+            if key in self._data:
+                del self._data[key]
+                return True
+            return False
+
+    def contains(self, session_hash: str, page_id: str) -> bool:
+        try:
+            key = self._normalize_key(session_hash, page_id)
+        except (ValueError, AttributeError):
+            return False
         with self._lock:
             return key in self._data
+
+    def __contains__(self, key: Any) -> bool:
+        if isinstance(key, tuple) and len(key) == 2:
+            return self.contains(key[0], key[1])
+        return False
+
+    def __getitem__(self, key: tuple[str, str]) -> dict[str, Any]:
+        if not isinstance(key, tuple) or len(key) != 2:
+            raise TypeError("BoundedPageStore key must be a (session_hash, page_id) tuple")
+        val = self.get(key[0], key[1])
+        if val is None:
+            raise KeyError(key)
+        return val
+
+    def __setitem__(self, key: tuple[str, str], value: dict[str, Any]) -> None:
+        if not isinstance(key, tuple) or len(key) != 2:
+            raise TypeError("BoundedPageStore key must be a (session_hash, page_id) tuple")
+        self.set(key[0], key[1], value)
 
     def __len__(self) -> int:
         with self._lock:
@@ -319,13 +360,12 @@ class BoundedPageStore:
         with self._lock:
             return list(self._data.items())
 
-    def keys(self):
+    def items_for_session(self, session_hash: str) -> list[tuple[str, dict[str, Any]]]:
+        if not session_hash:
+            return []
+        norm = session_hash.strip().lower()
         with self._lock:
-            return list(self._data.keys())
-
-    def values(self):
-        with self._lock:
-            return list(self._data.values())
+            return [(pid, val) for (s_hash, pid), val in self._data.items() if s_hash == norm]
 
     def clear(self) -> None:
         with self._lock:
@@ -403,6 +443,11 @@ class ScanLinksRequest(BaseModel):
     )
 
 
+class SessionInitResponse(BaseModel):
+    success: bool = True
+    session_token: str
+
+
 class HoverCheckRequest(BaseModel):
     url: str
     page_url: str = ""
@@ -448,8 +493,8 @@ def normalize_words(text: str) -> set[str]:
     return set(words)
 
 
-def get_page(page_id: str):
-    return page_store.get(page_id)
+def get_page(session_hash: str, page_id: str) -> dict[str, Any] | None:
+    return page_store.get(session_hash, page_id)
 
 
 def build_chunk_text(chunk: dict[str, Any]) -> str:
@@ -893,14 +938,47 @@ def health():
 
 
 # ============================================================
+# SESSION MANAGEMENT
+# ============================================================
+
+
+@app.post(
+    "/session/init",
+    response_model=SessionInitResponse,
+    summary="Initialize anonymous session token",
+)
+@limiter.limit(DEFAULT_AI_RATE_LIMIT)
+async def init_session(
+    request: Request,
+    response: Response,
+):
+    """
+    Generate an anonymous, cryptographically secure session token.
+    Returned to the client extension exactly once via HTTPS.
+    Never logged or persisted on the server.
+    Cache-Control headers prevent caching across intermediate proxies.
+    """
+    token = create_session_token()
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return SessionInitResponse(
+        success=True,
+        session_token=token,
+    )
+
+
+# ============================================================
 # PAGE INGEST
 # ============================================================
 
 
 @app.post("/page/ingest")
 async def ingest_page(
-    request: PageIngestRequest
+    request: PageIngestRequest,
+    session_hash: str = Depends(get_current_session_hash),
 ):
+
+    log_memory_checkpoint("page_ingest_begin")
 
     page_id = clean_text(request.page_id)
 
@@ -917,8 +995,9 @@ async def ingest_page(
         "chunks": request.chunks
     })
 
-    page_store[page_id] = {
+    page_store.set(session_hash, page_id, {
         "page_id": page_id,
+        "session_hash": session_hash,
         "title": request.title,
         "url": request.url,
         "hostname": request.hostname,
@@ -935,7 +1014,7 @@ async def ingest_page(
         "page_state": state_info["page_state"],
         "is_loading_or_error": state_info["is_loading_or_error"],
         "state_reason": state_info["reason"]
-    }
+    })
         # ========================================================
     # RAG: CREATE VECTOR INDEX
     # ========================================================
@@ -968,7 +1047,8 @@ async def ingest_page(
             create_index(
                 page_id,
                 embeddings,
-                chunks_to_index
+                chunks_to_index,
+                session_hash=session_hash
             )
 
             if DEBUG_LOGS:
@@ -996,6 +1076,8 @@ async def ingest_page(
     if DEBUG_LOGS:
         print(f"[ingest_page] Page indexed: id={page_id[:8]}... chunks={len(request.chunks)}")
 
+    log_memory_checkpoint("page_ingest_complete")
+
     return {
         "success": True,
         "message": "Page indexed successfully.",
@@ -1019,7 +1101,8 @@ async def ingest_page(
 
 @app.post("/page")
 async def receive_page(
-    page: dict[str, Any]
+    page: dict[str, Any],
+    session_hash: str = Depends(get_current_session_hash),
 ):
 
     page_id = clean_text(
@@ -1034,7 +1117,8 @@ async def receive_page(
                 "page_id is required."
         }
 
-    page_store[page_id] = page
+    page["session_hash"] = session_hash
+    page_store.set(session_hash, page_id, page)
 
     if DEBUG_LOGS:
         print(f"[receive_page] Page registered: id={page_id[:8]}...")
@@ -1102,23 +1186,20 @@ async def receive_page(
 @limiter.limit(DEFAULT_AI_RATE_LIMIT)
 async def search_page(
     request: Request,
-    body: SearchRequest
+    body: SearchRequest,
+    session_hash: str = Depends(get_current_session_hash),
 ):
 
     page = get_page(
+        session_hash,
         body.page_id
     )
 
     if not page:
-
-        return {
-            "success": False,
-            "message":
-                "No page found. "
-                "Read the current page first.",
-            "resultCount": 0,
-            "results": []
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Page not found. Read the current page first."
+        )
 
     chunks = retrieve_chunks(
         page,
@@ -1177,7 +1258,8 @@ async def search_page(
 @limiter.limit(DEFAULT_AI_RATE_LIMIT)
 async def ask_mentor(
     request: Request,
-    body: AskRequest
+    body: AskRequest,
+    session_hash: str = Depends(get_current_session_hash),
 ):
 
     question = clean_text(
@@ -1196,19 +1278,15 @@ async def ask_mentor(
 
 
     page = get_page(
+        session_hash,
         body.page_id
     )
 
     if not page:
-
-        return {
-            "success": False,
-            "message":
-                "No page found. "
-                "Please read the current page first.",
-            "answer": "",
-            "sources": []
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Page not found. Please read the current page first."
+        )
 
 
     chunks = page.get(
@@ -1277,7 +1355,8 @@ async def ask_mentor(
             rag_results = search(
                 body.page_id,
                 query_embedding,
-                top_k=body.top_k
+                top_k=body.top_k,
+                session_hash=session_hash
             )
 
             # Convert FAISS results back into the
@@ -2319,7 +2398,8 @@ def analyze_link(
 
 @app.post("/scan-links")
 async def scan_links(
-    request: ScanLinksRequest
+    request: ScanLinksRequest,
+    session_hash: str = Depends(get_current_session_hash),
 ):
 
     links = request.links
@@ -2332,16 +2412,22 @@ async def scan_links(
         if request.page_id:
 
             page = get_page(
-                    request.page_id
+                session_hash,
+                request.page_id
+            )
+            if not page:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Page not found. Please read page first."
                 )
 
 
         if page:
 
             links = page.get(
-                    "links",
-                    []
-                )
+                "links",
+                []
+            )
 
 
     results = []
@@ -2526,10 +2612,28 @@ def _verify_debug_access(
 def debug_pages(
     x_debug_token: str | None = Header(None, alias="X-Debug-Token"),
     authorization: str | None = Header(None),
+    x_session_id: str | None = Header(None, alias="X-Session-ID"),
 ):
     _verify_debug_access(x_debug_token, authorization)
+    session_hash = None
+    raw_token = x_session_id
+    if not raw_token and authorization and authorization.startswith("Bearer "):
+        raw_token = authorization[7:].strip()
+    if raw_token:
+        try:
+            from app.services.session_service import hash_session_token, is_valid_token_format
+            if is_valid_token_format(raw_token):
+                session_hash = hash_session_token(raw_token)
+        except Exception:
+            pass
+
     pages = []
-    for page_id, page in page_store.items():
+    if session_hash:
+        items = page_store.items_for_session(session_hash)
+    else:
+        items = [(pid, val) for (_, pid), val in page_store.items()]
+
+    for page_id, page in items:
         pages.append({
             "page_id": page_id,
             "title": page.get("title", ""),
@@ -2542,7 +2646,7 @@ def debug_pages(
 
     return {
         "success": True,
-        "pageCount": len(page_store),
+        "pageCount": len(pages),
         "pages": pages
     }
 
@@ -2556,14 +2660,34 @@ def debug_page(
     page_id: str,
     x_debug_token: str | None = Header(None, alias="X-Debug-Token"),
     authorization: str | None = Header(None),
+    x_session_id: str | None = Header(None, alias="X-Session-ID"),
 ):
     _verify_debug_access(x_debug_token, authorization)
-    page = get_page(page_id)
+
+    # Enforce session token validation and ownership check
+    raw_token = x_session_id
+    if not raw_token and authorization and authorization.startswith("Bearer "):
+        raw_token = authorization[7:].strip()
+    if not raw_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Session authentication required. Provide X-Session-ID."
+        )
+
+    from app.services.session_service import hash_session_token, is_valid_token_format
+    if not is_valid_token_format(raw_token):
+        raise HTTPException(
+            status_code=401,
+            detail="Malformed session token."
+        )
+    session_hash = hash_session_token(raw_token)
+
+    page = get_page(session_hash, page_id)
     if not page:
-        return {
-            "success": False,
-            "message": "Page not found."
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Page not found."
+        )
 
     return {
         "success": True,
@@ -2577,6 +2701,8 @@ def debug_page(
 
 @app.on_event("startup")
 async def startup():
+    log_memory_checkpoint("app_startup_begin")
+
     # Safely ensure vector store directory exists
     init_vector_store_dir()
 
@@ -2600,6 +2726,7 @@ async def startup():
         print(f"Max Request Body:   {MAX_REQUEST_BODY_SIZE} bytes")
         print(f"Max In-Memory Pages:{MAX_IN_MEMORY_PAGES}")
         print("==============================================\n")
+    log_memory_checkpoint("app_startup_complete")
 # ============================================================
 # SCAMSHIELD TEXT ANALYSIS
 # ============================================================
@@ -2649,14 +2776,25 @@ from app.schemas import (
 @app.post("/command/execute", response_model=CommandExecutionResponse)
 @app.post("/assistant/command", response_model=CommandExecutionResponse)
 @limiter.limit(DEFAULT_AI_RATE_LIMIT)
-async def command_execute_endpoint(request: Request, body: CommandExecutionRequest):
+async def command_execute_endpoint(
+    request: Request,
+    body: CommandExecutionRequest,
+    session_hash: str = Depends(get_current_session_hash),
+):
     """
     Phase 2 & 4 AI Command Center endpoint:
     Accepts natural-language user instruction, gathers page context,
     invokes appropriate registered tool, and returns a verified, structured response
     respecting user privacy settings.
     """
-    page = get_page(body.page_id) if body.page_id else None
+    page = None
+    if body.page_id:
+        page = get_page(session_hash, body.page_id)
+        if not page:
+            raise HTTPException(
+                status_code=404,
+                detail="Page not found. Please read page first."
+            )
     return await execute_command(
         instruction=body.instruction,
         page=page,
@@ -2672,7 +2810,11 @@ async def command_execute_endpoint(request: Request, body: CommandExecutionReque
 
 @app.post("/assistant/query")
 @limiter.limit(DEFAULT_AI_RATE_LIMIT)
-async def assistant_query(request: Request, body: AssistantQueryRequest):
+async def assistant_query(
+    request: Request,
+    body: AssistantQueryRequest,
+    session_hash: str = Depends(get_current_session_hash),
+):
     """
     Central router endpoint for universal queries:
     - Summaries
@@ -2681,7 +2823,14 @@ async def assistant_query(request: Request, body: AssistantQueryRequest):
     - Link inspection
     - Selection explanation
     """
-    page = get_page(body.page_id) if body.page_id else None
+    page = None
+    if body.page_id:
+        page = get_page(session_hash, body.page_id)
+        if not page:
+            raise HTTPException(
+                status_code=404,
+                detail="Page not found. Please read page first."
+            )
     return await execute_tool_request(
         query=body.query,
         page=page,
@@ -2711,12 +2860,14 @@ def universal_security_analyze_text(request: SecurityTextRequest):
 
 
 @app.post("/security/analyze-page")
-def security_analyze_page_endpoint(request: PageSummaryRequest):
+def security_analyze_page_endpoint(
+    request: PageSummaryRequest,
+    session_hash: str = Depends(get_current_session_hash),
+):
     """
     Complete security audit of an ingested webpage (forms, links, content cues).
     """
-    from fastapi import HTTPException
-    page = get_page(request.page_id)
+    page = get_page(session_hash, request.page_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found. Please read page first.")
     return analyze_page_security(page, disabled_checks=request.disabled_checks)
@@ -2724,12 +2875,15 @@ def security_analyze_page_endpoint(request: PageSummaryRequest):
 
 @app.post("/page/summary")
 @limiter.limit(DEFAULT_AI_RATE_LIMIT)
-async def page_summary_endpoint(request: Request, body: PageSummaryRequest):
+async def page_summary_endpoint(
+    request: Request,
+    body: PageSummaryRequest,
+    session_hash: str = Depends(get_current_session_hash),
+):
     """
     Produce structured summary and key points for an ingested webpage.
     """
-    from fastapi import HTTPException
-    page = get_page(body.page_id)
+    page = get_page(session_hash, body.page_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found. Please read page first.")
     return await execute_tool_request(

@@ -826,7 +826,7 @@ Please format your response clearly:
         cmp_chunks = []
         try:
             sel_vec = embed_text(target_claim[:500])
-            hits = search(page.get("page_id", ""), sel_vec, top_k=4)
+            hits = search(page.get("page_id", ""), sel_vec, top_k=4, session_hash=page.get("session_hash"))
             for hit in hits:
                 c = hit.get("chunk")
                 if isinstance(c, dict) and c.get("text"):
@@ -935,7 +935,7 @@ Analyze:
     relevant_chunks = []
     try:
         query_vec = embed_text(clean_instr)
-        rag_hits = search(page_id, query_vec, top_k=5)
+        rag_hits = search(page_id, query_vec, top_k=5, session_hash=page.get("session_hash"))
         for hit in rag_hits:
             c = hit.get("chunk")
             if isinstance(c, dict) and c.get("text"):
