@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import joblib
+from app.services.memory_diagnostics import log_memory_checkpoint
 from dotenv import load_dotenv
 
 # Explicitly load the backend .env, regardless of the working directory.
@@ -104,7 +105,9 @@ def load_model() -> dict[str, Any]:
     from app.services.model_integrity import verify_model_artifact
     verify_model_artifact(path)
 
+    log_memory_checkpoint("scamshield_model_load_begin")
     model = joblib.load(path)
+    log_memory_checkpoint("scamshield_model_load_complete")
 
     if not isinstance(model, dict):
         raise RuntimeError("Unsupported ScamShield model format.")
