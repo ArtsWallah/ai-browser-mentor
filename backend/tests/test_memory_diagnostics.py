@@ -409,7 +409,7 @@ class TestCheckpointIntegration:
         monkeypatch.setattr(embedding_service, "log_memory_checkpoint", mock_checkpoint)
 
         class DummyModel:
-            def embed(self, texts):
+            def embed(self, texts, **kwargs):
                 return [np.zeros(384, dtype=np.float32) for _ in texts]
 
         monkeypatch.setattr(embedding_service, "get_model", lambda: DummyModel())
