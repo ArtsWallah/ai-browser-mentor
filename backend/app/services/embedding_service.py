@@ -24,6 +24,7 @@ def get_model():
                 _model = TextEmbedding(
                     model_name=MODEL_NAME,
                     threads=1,
+                    enable_cpu_mem_arena=False,
                 )
                 log_memory_checkpoint("sentence_transformer_init_complete")
 

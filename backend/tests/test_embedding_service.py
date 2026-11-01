@@ -10,6 +10,7 @@ Verifies:
 6. Thread-safe initialization under concurrent access with try/finally restoration.
 7. Internal TypeError from model.embed() propagates directly without retry.
 8. Memory diagnostic checkpoints are invoked.
+9. FastEmbed TextEmbedding initializes ONNX Runtime with enable_cpu_mem_arena=False.
 """
 
 import threading
@@ -154,3 +155,12 @@ class TestEmbeddingService:
         embedding_service.embed_texts(["Test chunk"])
         assert "embedding_generation_begin" in checkpoints
         assert "embedding_generation_complete" in checkpoints
+
+    def test_model_disables_cpu_mem_arena(self):
+        """Verify the real FastEmbed model initializes ONNX Runtime with enable_cpu_mem_arena=False."""
+        model = embedding_service.get_model()
+        onnx_session = model.model.model
+        session_options = onnx_session.get_session_options()
+        assert session_options.enable_cpu_mem_arena is False, (
+            f"Expected enable_cpu_mem_arena=False, got {session_options.enable_cpu_mem_arena}"
+        )
