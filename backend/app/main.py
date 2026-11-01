@@ -63,6 +63,14 @@ MAX_REQUEST_BODY_SIZE = int(os.getenv("MAX_REQUEST_BODY_SIZE", str(2 * 1024 * 10
 # Maximum In-Memory Pages to retain before LRU eviction
 MAX_IN_MEMORY_PAGES = int(os.getenv("MAX_IN_MEMORY_PAGES", "100"))
 
+# Maximum chunks to index in RAG vector store per page to bound memory usage
+try:
+    MAX_INDEXED_CHUNKS = int(os.getenv("MAX_INDEXED_CHUNKS", "40"))
+    if MAX_INDEXED_CHUNKS <= 0:
+        MAX_INDEXED_CHUNKS = 40
+except (ValueError, TypeError):
+    MAX_INDEXED_CHUNKS = 40
+
 # ============================================================
 # FASTAPI
 # ============================================================
@@ -1021,10 +1029,11 @@ async def ingest_page(
 
     try:
 
+        candidate_chunks = clean_chunks if clean_chunks else request.chunks
+        indexed_chunks = []
         chunk_texts = []
-        chunks_to_index = clean_chunks if clean_chunks else request.chunks
 
-        for chunk in chunks_to_index:
+        for chunk in candidate_chunks:
 
             if isinstance(chunk, dict):
 
@@ -1035,7 +1044,10 @@ async def ingest_page(
                 text = clean_text(chunk)
 
             if text:
+                indexed_chunks.append(chunk)
                 chunk_texts.append(text)
+                if len(indexed_chunks) >= MAX_INDEXED_CHUNKS:
+                    break
 
 
         if chunk_texts:
@@ -1047,7 +1059,7 @@ async def ingest_page(
             create_index(
                 page_id,
                 embeddings,
-                chunks_to_index,
+                indexed_chunks,
                 session_hash=session_hash
             )
 
